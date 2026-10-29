@@ -14,7 +14,8 @@ entity main is
 		prog_data : in std_logic_vector(11 downto 0);
 		mcu_data : inout std_logic_vector(7 downto 0);
 		mcu_addr : out std_logic_vector(6 downto 0);
-		MCUWR, MCUDS, IRSV : out std_logic;
+		MCUWR : inout std_logic;
+		MCUDS, IRSV : out std_logic;
 		CK, IRQ, RESET : in std_logic
 	);
 end;

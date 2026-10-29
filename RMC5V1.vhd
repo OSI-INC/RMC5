@@ -128,6 +128,8 @@ architecture behavior of RMC5_MCU is
 -- Arithmetic Logic Unit inputs and outputs.
 	signal alu_cin, alu_ctrl, alu_cout : std_logic;
 	signal alu_out : std_logic_vector(7 downto 0);
+	attribute syn_keep of alu_out : signal is true;
+	attribute nomerge of alu_out : signal is "";	
 
 -- Instruction fields.
 	signal opcode : opcode_type;
@@ -502,8 +504,10 @@ begin
 				mcu_addr <= reg_SP;
 				mcu_data_out <= (others => '0');
 				mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
-				WR <= true;
-				DS <= true;
+				if (state = read_opcode) then
+					WR <= true;
+					DS <= true;
+				end if;
 
 			when pop_A | pop_F | ret_cll | ret_int =>
 				mcu_addr <= reg_SP;
@@ -513,7 +517,7 @@ begin
 			
 			end case;
 		end if;
-	end process;
+end process;
 	
 	-- The ISRV Delay takes RISRV generated on the rising edge of CK
 	-- and delays until the falling edge, so as to match signals written
