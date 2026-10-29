@@ -3,12 +3,6 @@
     <Options/>
     <Implementation title="impl1" dir="impl1" description="impl1" synthesis="synplify" default_strategy="Strategy1">
         <Options/>
-        <Source name="ADD8.ipx" type="IPX_Module" type_short="IPX">
-            <Options/>
-        </Source>
-        <Source name="ROM.ipx" type="IPX_Module" type_short="IPX">
-            <Options/>
-        </Source>
         <Source name="../RMC5V1.vhd" type="VHDL" type_short="VHDL">
             <Options/>
         </Source>
