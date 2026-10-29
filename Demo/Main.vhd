@@ -10,6 +10,8 @@ use ieee.numeric_std.all;
 
 entity main is 
 	port (
+		prog_cntr : out std_logic_vector(6 downto 0);
+		prog_data : in std_logic_vector(11 downto 0);
 		mcu_data : inout std_logic_vector(7 downto 0);
 		mcu_addr : out std_logic_vector(6 downto 0);
 		MCUWR, MCUDS, IRSV : out std_logic;
@@ -43,6 +45,8 @@ begin
 -- The RMC5, configured for this application by its generic map.
 	MCU : entity RMC5_MCU
 		port map (
+			prog_cntr => prog_cntr,
+			prog_data => prog_data,
 			mcu_data_out => mcu_data_out,
 			mcu_data_in => mcu_data_in,
 			mcu_addr => mcu_addr,

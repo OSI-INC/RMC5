@@ -52,12 +52,17 @@ entity RMC5_MCU is
 		data_len : integer := 8;
 		start_pc : integer := 0;
 		interrupt_pc : integer := 3;
-		start_sp : integer := 0
+		start_sp : integer := 0;
+		opcode_len : integer := 5;
+		operand_len : integer := addr_len;
+		instr_len : integer := opcode_len + operand_len
 	);
 	port (
-		mcu_data_out : out std_logic_vector(data_len-1 downto 0); -- Outgoing MCU Data Bus
-		mcu_data_in : in std_logic_vector(data_len-1 downto 0); -- Incoming MCU Data Bus
-		mcu_addr : out std_logic_vector(addr_len-1 downto 0); -- Outgoing MCU Address Bus
+		prog_cntr : out std_logic_vector(addr_len-1 downto 0); -- Outgoing Program Counter
+		prog_data : in std_logic_vector(instr_len-1 downto 0); -- Incoming Program Data
+		mcu_data_out : out std_logic_vector(data_len-1 downto 0); -- Outgoing Data Bus
+		mcu_data_in : in std_logic_vector(data_len-1 downto 0); -- Incoming Data Bus
+		mcu_addr : out std_logic_vector(addr_len-1 downto 0); -- Outgoing Address Bus
 		WR : out boolean; -- Write Cycle
 		DS : out boolean; -- Data Strobe
 		IRQ : in boolean; -- Interrupt Request
@@ -69,9 +74,6 @@ end;
 architecture behavior of RMC5_MCU is 
 
 -- Instruction types.
-	constant opcode_len : integer := 5;
-	constant operand_len : integer := addr_len;
-	constant instr_len : integer := opcode_len + operand_len;
 	subtype instruction_type is std_logic_vector(instr_len-1 downto 0);
 	subtype opcode_type is std_logic_vector(opcode_len-1 downto 0);
 	subtype operand_type is std_logic_vector(addr_len-1 downto 0);
@@ -121,9 +123,7 @@ architecture behavior of RMC5_MCU is
 	signal alu_cin, alu_ctrl, alu_cout : std_logic;
 	signal alu_out : std_logic_vector(7 downto 0);
 
--- Progam counter, instruction data, and instruction components.
-	signal prog_data : instruction_type; -- Instruction Data
-	signal prog_cntr : operand_type; -- Program Counter
+-- Instruction fields.
 	signal opcode : opcode_type;
 	signal operand : operand_type;
 
@@ -162,12 +162,6 @@ architecture behavior of RMC5_MCU is
 	begin if v then return('1'); else return('0'); end if; end function;
 
 begin 
-
--- The Instruction Memory is a ROM that holds the MCU program. 
-	Instruction_Memory : entity ROM port map (
-		Address => prog_cntr,
-        Q => prog_data
-	);
 
 -- Global opcode and operand variables separate the top and bottom sections
 -- of the instruction that is currently output from the instruction memory.
