@@ -231,7 +231,7 @@ begin
 		-- Add X and Y with Carry
 		when alu_cmd_add =>
 			if alu_cin then 
-				result := ('0' & inx) + ('0' & iny) + "000000001";
+				result := ('0' & inx) + ('0' & iny) + 1;
 			else 
 				result := ('0' & inx) + ('0' & iny); 
 			end if;
@@ -239,7 +239,7 @@ begin
 		-- Subtract Y from X with Borrow
 		when alu_cmd_sub =>
 			if alu_cin then 
-				result := ('0' & inx) - ('0' & iny) - "000000001";
+				result := ('0' & inx) - ('0' & iny) - 1;
 			else 
 				result := ('0' & inx) - ('0' & iny); 
 			end if;
@@ -551,21 +551,7 @@ begin
 				next_pc := std_logic_vector(unsigned(prog_cntr)+1);	
 
 			end if;
-			
-			-- Update Z after arithmetic and logical operations.
-			if (state = read_opcode) and
-			   ((opcode = add_A_m) or
-				(opcode = adc_A_m) or
-				(opcode = sub_A_m) or
-				(opcode = sbc_A_m) or
-				(opcode = and_A_m) or
-				(opcode = or_A_m) or
-				(opcode = xor_A_m)) and
-			   not (IRQ and (not flag_I)) then
-
-				next_flag_Z := (unsigned(next_A) = 0);
-			end if;
-						
+									
 			-- Assert the new state, program counter, and register values for the next clock 
 			-- cycle.
 			prog_cntr <= next_pc; 
@@ -582,8 +568,6 @@ begin
 	-- Here we have combinatorial logic that produce various MCU signals.
 	MCU_MUX : process (all) is
 	begin		
-		alu_cin <= false;
-		alu_ctrl <= alu_cmd_add;
 		mcu_addr <= operand;
 		mcu_data_out <= reg_A;
 		WDS <= false;
@@ -598,37 +582,6 @@ begin
 			
 			when ld_m_A =>
 				WDS <= true;
-			
-			when add_A_m =>
-				alu_cin <= false;
-				alu_ctrl <= alu_cmd_add;
-					
-			when adc_A_m =>
-				alu_cin <= flag_C;
-				alu_ctrl <= alu_cmd_add;
-					
-			when sub_A_m =>
-				alu_cin <= false;
-				alu_ctrl <= alu_cmd_sub;
-					
-			when sbc_A_m =>
-				alu_cin <= flag_C;
-				alu_ctrl <= alu_cmd_sub;
-
-			when and_A_m =>
-				alu_ctrl <= alu_cmd_and;
-			
-			when or_A_m =>
-				alu_ctrl <= alu_cmd_or;
-							
-			when xor_A_m =>
-				alu_ctrl <= alu_cmd_xor;
-				
-			when rr_A =>
-				alu_ctrl <= alu_cmd_rr;
-				
-			when rl_A =>
-				alu_ctrl <= alu_cmd_rl;
 			
 			when push_A =>
 				mcu_addr <= reg_SP;
@@ -659,7 +612,51 @@ begin
 			
 			end case;
 		end if;
-	end process;
+		alu_in_x <= reg_A;
+		alu_in_y <= mcu_data_in;
+		alu_cin <= false;
+		alu_ctrl <= alu_cmd_add;
+		
+		case opcode is
+		
+		when add_A_m =>
+			alu_cin <= false;
+			alu_ctrl <= alu_cmd_add;
+				
+		when adc_A_m =>
+			alu_cin <= flag_C;
+			alu_ctrl <= alu_cmd_add;
+				
+		when sub_A_m =>
+			alu_cin <= false;
+			alu_ctrl <= alu_cmd_sub;
+				
+		when sbc_A_m =>
+			alu_cin <= flag_C;
+			alu_ctrl <= alu_cmd_sub;
+
+		when and_A_m =>
+			alu_ctrl <= alu_cmd_and;
+		
+		when or_A_m =>
+			alu_ctrl <= alu_cmd_or;
+						
+		when xor_A_m =>
+			alu_ctrl <= alu_cmd_xor;
+			
+		when rr_A =>
+			alu_cin <= flag_C;
+			alu_ctrl <= alu_cmd_rr;
+			
+		when rl_A =>
+			alu_cin <= flag_C;
+			alu_ctrl <= alu_cmd_rl;
+			
+		when others =>
+			null;
+		
+		end case;
+end process;
 	
 	-- The ISRV Delay takes RISRV generated on the rising edge of CK
 	-- and delays until the falling edge, so as to match signals written
