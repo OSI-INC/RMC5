@@ -1,0 +1,40 @@
+[Device]
+Family=machxo2
+PartType=LCMXO2-256ZE
+PartName=LCMXO2-256ZE-1SG32C
+SpeedGrade=1
+Package=QFN32
+OperatingCondition=COM
+Status=S
+
+[IP]
+VendorName=Lattice Semiconductor Corporation
+CoreType=LPM
+CoreStatus=Demo
+CoreName=Distributed_ROM
+CoreRevision=2.8
+ModuleName=ROM
+SourceFormat=VHDL
+ParameterFileVersion=1.0
+Date=10/28/2026
+Time=23:30:55
+
+[Parameters]
+Verilog=0
+VHDL=1
+EDIF=1
+Destination=Synplicity
+Expression=BusA(0 to 7)
+Order=Big Endian [MSB:LSB]
+IO=0
+Addresses=128
+Data=12
+LUT=1
+MemFile=c:/kevan/rmc5/demo/rom.mem
+MemFormat=hex
+
+[FilesGenerated]
+c:/kevan/rmc5/demo/rom.mem=mem
+
+[Command]
+cmd_line= -w -n ROM -lang vhdl -synth lse -bus_exp 7 -bb -arch xo2c00 -dram -type romblk -addr_width 7 -num_words 128 -data_width 12 -outdata REGISTERED -memfile c:/kevan/rmc5/demo/rom.mem -memformat hex

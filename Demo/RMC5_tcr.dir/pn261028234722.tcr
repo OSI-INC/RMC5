@@ -1,0 +1,28 @@
+#Start recording tcl command: 10/28/2026 23:10:18
+#Project Location: C:/Kevan/RMC5/Demo; Project name: RMC5
+prj_project new -name "RMC5" -impl "impl1" -dev LCMXO2-256ZE-1SG32C -synthesis "synplify"
+prj_src add "C:/Kevan/RMC5/RMC5V1.vhd"
+prj_project save
+prj_src add "C:/Kevan/RMC5/Main.vhd"
+prj_run Synthesis -impl impl1
+prj_run Synthesis -impl impl1
+prj_src add "C:/Kevan/RMC5/Demo/ROM.ipx"
+prj_run Synthesis -impl impl1
+prj_src add "C:/Kevan/RMC5/Demo/ADD8.ipx"
+prj_run Synthesis -impl impl1
+prj_strgy set_value -strategy Strategy1 syn_vhdl2008=True
+prj_strgy set_value -strategy Strategy1 lse_vhdl2008=True
+prj_run Synthesis -impl impl1
+prj_run Synthesis -impl impl1
+prj_run Synthesis -impl impl1
+prj_run Synthesis -impl impl1
+prj_run Synthesis -impl impl1
+prj_run Synthesis -impl impl1
+prj_run Synthesis -impl impl1
+prj_run Synthesis -impl impl1
+prj_run Synthesis -impl impl1
+prj_run Map -impl impl1
+prj_dev set -part LCMXO2-256ZE-1TG100C
+prj_run Map -impl impl1
+prj_run Map -impl impl1
+#Stop recording: 10/28/2026 23:47:22
