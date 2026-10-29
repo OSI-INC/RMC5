@@ -5,9 +5,6 @@ Address[3]  i
 Address[2]  i
 Address[1]  i
 Address[0]  i
-OutClock  i
-OutClockEn  i
-Reset  i
 Q[11]  o
 Q[10]  o
 Q[9]  o

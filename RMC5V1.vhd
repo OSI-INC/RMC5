@@ -22,14 +22,23 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
--- This processor requires seperate instruction and process memories. 
+-- The microcontroller requires seperate instruction and process memories. 
 -- Both memories have maximum size 128 locations. The instruction
--- memory locations are twelve bits long: five for opcode and seven for an
--- operand. This operand can be an address in either memories, or it can be
--- ignored.
+-- memory locations are 12 bits long: 5 for opcode and 7 for an
+-- operand. The operand can be an address in either memories, or it can be
+-- ignored. We might use the operand for other purposes in future versions
+-- of the microcontroller, but for now we are trying to keep it small.
+
+-- The instruction memory is built into the processor. The process memory is
+-- external. The instruction memory should be read-only memory (ROM) with no-- clock. The program counter connects directly to the ROM and the instruction
+-- appears in response with no clock delays. The process memory should be 
+-- random-access memory (RAM) with no output register. The output of the RAM-- should be the byte selected by the RAM address, with no read clock. The
+-- WR signal tells the RAM that it should not drive a shared data bus. The DS 
+-- signal, when combined with WR, tells the RAM to store its input data at the 
+-- location selected by its input address. This write should take place on-- the rising edge of CK.
 
 -- The IRQ signal is the interrupt request line from external logic. The memory 
--- management unit (MMU) must provide a way for the CPU to clear the IRQ signal 
+-- management unit (MMU) must provide a way for the MCU to clear the IRQ signal 
 -- so it can get back to its main program.
 
 -- The RESET signal will put the program counter back to start_pc and the stack
@@ -37,18 +46,18 @@ use ieee.numeric_std.all;
 -- the stack in the locations zero and up, but we can set the stack pointer to
 -- some other value with an instruction. Interrupts execute from interrupt_pc.
 
-entity RMC5_CPU is 
+entity RMC5_MCU is 
 	generic (
 		addr_len : integer := 7;
-		opcode_len : integer := 5;
-		instr_len : integer := 12;
+		data_len : integer := 8;
 		start_pc : integer := 0;
-		interrupt_pc : integer := 3
+		interrupt_pc : integer := 3;
+		start_sp : integer := 0
 	);
 	port (
-		cpu_data_out : out std_logic_vector(7 downto 0); -- Outgoing CPU Data Bus
-		cpu_data_in : in std_logic_vector(7 downto 0); -- Incoming CPU Data Bus
-		cpu_addr : out std_logic_vector(addr_len-1 downto 0); -- Outgoing CPU Address Bus
+		mcu_data_out : out std_logic_vector(data_len-1 downto 0); -- Outgoing MCU Data Bus
+		mcu_data_in : in std_logic_vector(data_len-1 downto 0); -- Incoming MCU Data Bus
+		mcu_addr : out std_logic_vector(addr_len-1 downto 0); -- Outgoing MCU Address Bus
 		WR : out boolean; -- Write Cycle
 		DS : out boolean; -- Data Strobe
 		IRQ : in boolean; -- Interrupt Request
@@ -57,14 +66,19 @@ entity RMC5_CPU is
 		CK : in std_logic); -- The clock, duty cycle 50%.
 end;
 
-architecture behavior of RMC5_CPU is 
+architecture behavior of RMC5_MCU is 
 
--- The opcode and operand types.
+-- Instruction types.
+	constant opcode_len : integer := 5;
+	constant operand_len : integer := addr_len;
+	constant instr_len : integer := opcode_len + operand_len;
+	subtype instruction_type is std_logic_vector(instr_len-1 downto 0);
 	subtype opcode_type is std_logic_vector(opcode_len-1 downto 0);
 	subtype operand_type is std_logic_vector(addr_len-1 downto 0);
-	
+	subtype data_type is std_logic_vector(data_len-1 downto 0);
+
 -- Definition of operation codes. We have the constant name we will be using
--- in the VHDL definition of the CPU to refer to an operation, followed by 
+-- in the VHDL definition of the MCU to refer to an operation, followed by 
 -- the hexadecimal byte value by which this operation will be invoked as a 
 -- program is being executed, and the instruction pneumonic that shows what
 -- the instruction does, and how it is to be written in the RMC5 assembly 
@@ -103,19 +117,21 @@ architecture behavior of RMC5_CPU is
 	attribute syn_keep : boolean;
 	attribute nomerge : string;
 
--- ALU signals.
+-- Arithmetic Logic Unit inputs and outputs.
 	signal alu_cin, alu_ctrl, alu_cout : std_logic;
 	signal alu_out : std_logic_vector(7 downto 0);
 
--- Progam counter and instruction data.
-	signal prog_data : std_logic_vector(instr_len-1 downto 0); -- Instruction Data
-	signal prog_cntr : std_logic_vector(addr_len-1 downto 0); -- Program Counter
+-- Progam counter, instruction data, and instruction components.
+	signal prog_data : instruction_type; -- Instruction Data
+	signal prog_cntr : operand_type; -- Program Counter
+	signal opcode : opcode_type;
+	signal operand : operand_type;
 
--- CPU Registers. The Accumulator, or Register A, in which we get the result 
+-- MCU Registers. The Accumulator, or Register A, in which we get the result 
 -- of eight-bit arithmetic operations, logical operations, and shifts and 
 -- rotations. When such an operation requires a second operand, we can use 
 -- either Register B or a one-byte constant.
-	signal reg_A : std_logic_vector(7 downto 0);
+	signal reg_A : data_type;
 
 -- The flags are bits in the Flag Register, but we work with them as separate
 -- boolean signals so as to simplify our code. We have the Zero flag, Carry
@@ -123,14 +139,14 @@ architecture behavior of RMC5_CPU is
 	signal flag_Z, flag_C, flag_I : boolean;
 
 -- The Stack Pointer (SP) we use to manage an upward-growing stack. The
--- Stack Pointer points to the top of the stack, which is the byte most
--- recently pushed onto the stack, and at the highest address of all the 
--- bytes on the stack. When we push a byte onto the stack, we increment
--- the stack pointer, then perform the write. When we pop from the stack, we 
--- read from the stack and then decrement the stack pointer.
-	signal reg_SP : std_logic_vector(addr_len-1 downto 0);
+-- Stack Pointer points to the empty location on top of the stack, which 
+-- is the byte above the one most recently pushed onto the stack. When we 
+-- push a byte onto the stack, we write to the stack and then increment
+-- the stack pointer. When we pop from the stack, we decrement the stack
+-- pointer, then read from the stack. 
+	signal reg_SP : opcode_type;
 	
--- This signal is the one the CPU sets on the rising edge of CK to
+-- This signal is the one the MCU sets on the rising edge of CK to
 -- indicated that it is executing an interrupt routine. We will delay
 -- until the falling edge of CK to make ISRV.
 	signal RISRV : boolean;
@@ -138,28 +154,33 @@ architecture behavior of RMC5_CPU is
 -- The state values. We use single-bit values to simplify the state
 -- machine logic. We get faster and more compact logic even though we
 -- use eight bits for the state rather than three.
-	constant read_opcode : integer := 1;
-	constant read_stack : integer := 2;
-	constant incr_pc : integer := 3;
-		
+	signal state : integer range 0 to 3;
+	constant read_opcode : integer := 0;
+	constant read_stack : integer := 1;
+	constant incr_pc : integer := 2;
+	constant halt_pc : integer := 3;
+	
 -- Functions and Procedures	
 	function to_std_logic (v: boolean) return std_ulogic is
 	begin if v then return('1'); else return('0'); end if; end function;
 
 begin 
 
--- The Instruction Memory is a ROM that holds the CPU program. 
+-- The Instruction Memory is a ROM that holds the MCU program. 
 	Instruction_Memory : entity ROM port map (
 		Address => prog_cntr,
-        OutClock => CK,
-        OutClockEn => '1',
-        Reset => '0',	
-        Q => prog_data);
+        Q => prog_data
+	);
+
+-- Global opcode and operand variables separate the top and bottom sections
+-- of the instruction that is currently output from the instruction memory.
+	opcode <= prog_data(instr_len-1 downto instr_len-opcode_len);
+	operand <= prog_data(addr_len-1 downto 0);
 
 -- The ALU is an eight-bit adder-subtractor.
 	ALU : entity ADD8 port map (
 		DataA => reg_A,
-        DataB => cpu_data_in,
+        DataB => mcu_data_in,
         Cin => alu_cin,
         Add_Sub => alu_ctrl,
 		Cout => alu_cout,
@@ -167,30 +188,24 @@ begin
 
 -- The Central Processing Unit reads and writes from instruction, process, and 
 -- stack memory.
-	CPU : process (CK, RESET) is
-	variable opcode : opcode_type;
-	variable operand : operand_type;
-	variable next_A : std_logic_vector(7 downto 0);
+	MCU : process (CK, RESET) is
+	variable next_A : data_type;
 	variable next_flag_Z, next_flag_C, next_flag_I : boolean;
-	variable next_pc, next_SP : std_logic_vector(addr_len-1 downto 0);
+	variable next_pc, next_SP : operand_type;
 	variable next_RISRV : boolean;
-	variable state, next_state : integer range 0 to 3;
+	variable next_state : integer range 0 to 3;
 						
 	begin
 
 		-- Reset the cpu state and program counter until we enter standby mode.
 		if (RESET ='1') then 
-			state := read_opcode;
+			state <= read_opcode;
 			prog_cntr <= std_logic_vector(to_unsigned(start_pc,addr_len)); 
-			opcode := nop;
-			operand := (others => '0');
-			reg_SP <= (others => '0'); 
+			reg_SP <= std_logic_vector(to_unsigned(start_sp,addr_len)); 
 			flag_Z <= false;
 			flag_C <= false;
 			flag_I <= false;
 			RISRV <= false;
-			WR <= false;
-			DS <= false;
 			
 		-- Otherwise we repond to the rising edge of CK.
 		elsif rising_edge(CK) then
@@ -205,10 +220,6 @@ begin
 			next_flag_Z := flag_Z;
 			next_flag_I := flag_I;
 			next_RISRV := RISRV;
-			WR <= false;
-			DS <= false;
-			opcode := prog_data(instr_len-1 downto instr_len-opcode_len);
-			operand := prog_data(addr_len-1 downto 0);
 			
 			-- Read the first byte of the instruction. Most instructions will be executed
 			-- in one state, but a few need more states.
@@ -224,10 +235,8 @@ begin
 				-- "rti"), which will clear flag_I upon return. Clock Cycles = 1.
 				if IRQ and (not flag_I) then
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
-					WR <= true;
-					DS <= true;
-					cpu_data_out <= (others => '0');
-					cpu_data_out(addr_len-1 downto 0) <= prog_cntr;
+					mcu_data_out <= (others => '0');
+					mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
 					next_flag_I := true;
 					next_state := read_opcode;
 					next_pc := std_logic_vector(to_unsigned(interrupt_pc,addr_len));
@@ -247,26 +256,20 @@ begin
 					-- and freezing the program counter. Clock Cycles = 2.
 					when ret_int =>
 						next_SP := std_logic_vector(unsigned(reg_SP)-1);
-						WR <= false;
-						DS <= true;
 						next_state := read_stack;
 						next_pc := prog_cntr;
 				
 					-- Indirect eight-bit read operations using operand as address. Clock 
 					-- Cycles = 1.
 					when ld_A_m =>
-						WR <= false;
-						DS <= true;
-						next_A := cpu_data_in;
+						next_A := mcu_data_in;
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 						
 					-- Indirect eight-bit write operations using operand as address. Clock 
 					-- Cycles = 1.
 					when ld_m_A =>
-						WR <= true;
-						DS <= true;
-						cpu_data_out <= std_logic_vector(reg_A);
+						mcu_data_out <= std_logic_vector(reg_A);
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
@@ -274,15 +277,14 @@ begin
 					-- Cycles = 1.
 					when push_A | push_F => 
 						next_SP := std_logic_vector(unsigned(reg_SP)+1);
-						WR <= true;
-						DS <= true;
 						case opcode is
-							when push_A => cpu_data_out <= std_logic_vector(reg_A);
+							when push_A => 
+								mcu_data_out <= std_logic_vector(reg_A);
 							when push_F =>
-								cpu_data_out <= (others => '0');
-								cpu_data_out(7) <= to_std_logic(flag_I);
-								cpu_data_out(2) <= to_std_logic(flag_C);
-								cpu_data_out(0) <= to_std_logic(flag_Z);
+								mcu_data_out <= (others => '0');
+								mcu_data_out(7) <= to_std_logic(flag_I);
+								mcu_data_out(2) <= to_std_logic(flag_C);
+								mcu_data_out(0) <= to_std_logic(flag_Z);
 							when others => null;
 						end case;
 						next_state := read_opcode;
@@ -291,8 +293,6 @@ begin
 					-- Pop instructions for eight-bit registers. Clock Cycles = 2.
 					when pop_A | pop_F =>
 						next_SP := std_logic_vector(unsigned(reg_SP)-1);
-						WR <= false;
-						DS <= true;
 						next_state := read_stack;	
 						next_pc := prog_cntr;
 						
@@ -306,22 +306,22 @@ begin
 
 					-- Eight-bit logical AND. Sets the Z flag only. Clock Cycles = 1.
 					when and_A_m  => 
-						next_A := reg_A and cpu_data_in;
-						next_flag_Z := (unsigned(alu_out) = 0);
+						next_A := reg_A and mcu_data_in;
+						next_flag_Z := (unsigned(next_A) = 0);
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Eight-bit logical OR. Sets the Z flag only. Clock Cycles = 1.
 					when or_A_m  => 
-						next_A := reg_A or cpu_data_in;
-						next_flag_Z := (unsigned(alu_out) = 0);
+						next_A := reg_A or mcu_data_in;
+						next_flag_Z := (unsigned(next_A) = 0);
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Eight-bit logical XOR. Sets the Z flag only. Clock Cycles = 1.
 					when xor_A_m  => 
-						next_A := reg_A xor cpu_data_in;
-						next_flag_Z := (unsigned(alu_out) = 0);
+						next_A := reg_A xor mcu_data_in;
+						next_flag_Z := (unsigned(next_A) = 0);
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
@@ -366,10 +366,8 @@ begin
 					-- Cycles = 1.
 					when call_n =>
 						next_SP := std_logic_vector(unsigned(reg_SP)+1);
-						WR <= true;
-						DS <= true;
-						cpu_data_out <= (others => '0');
-						cpu_data_out(addr_len-1 downto 0) <= prog_cntr;
+						mcu_data_out <= (others => '0');
+						mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
 						next_state := read_opcode;
 						next_pc := operand;
 
@@ -379,8 +377,6 @@ begin
 					-- increment the program counter. Clock Cycles = 3.
 					when ret_cll =>
 						next_SP := std_logic_vector(unsigned(reg_SP)-1);
-						WR <= false;
-						DS <= true;
 						next_state := read_stack;
 						next_pc := prog_cntr;
 
@@ -414,11 +410,11 @@ begin
 				-- flag or registesr.
 				when pop_A | pop_F =>
 					case opcode is
-						when pop_A => next_A := cpu_data_in;
+						when pop_A => next_A := mcu_data_in;
 						when pop_F => 
-							next_flag_I := (cpu_data_in(7) = '1');
-							next_flag_C := (cpu_data_in(2) = '1');		
-							next_flag_Z := (cpu_data_in(0) = '1');
+							next_flag_I := (mcu_data_in(7) = '1');
+							next_flag_C := (mcu_data_in(2) = '1');		
+							next_flag_Z := (mcu_data_in(0) = '1');
 						when others => null;
 					end case;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
@@ -427,16 +423,12 @@ begin
 				-- Read the program counter from the stack. After this, we are going
 				-- to increment the counter.
 				when ret_cll =>
-					WR <= false;
-					DS <= true;
-					next_pc := cpu_data_in(addr_len-1 downto 0);
+					next_pc := mcu_data_in(addr_len-1 downto 0);
 					next_state := incr_pc;	
 					
 				-- Read the program counter from the stack and continue execution.
 				when ret_int =>
-					WR <= false;
-					DS <= true;
-					next_pc := cpu_data_in(addr_len-1 downto 0);
+					next_pc := mcu_data_in(addr_len-1 downto 0);
 					next_flag_I := false;
 					next_RISRV := false;
 					next_state := read_opcode;
@@ -453,11 +445,16 @@ begin
 			elsif (state = incr_pc) then
 				next_state := read_opcode;
 				next_pc := std_logic_vector(unsigned(prog_cntr)+1);	
+				
+			-- The halt state is one we include to complete the set of four states available
+			-- to our two-bit state signal.
+			elsif (state = halt_pc) then
+				null;
 			end if;
 			
 			-- Assert the new state, program counter, and register values for the next clock cycle.
 			prog_cntr <= next_pc; 
-			state := next_state;					
+			state <= next_state;					
 			reg_A <= next_A;
 			reg_SP <= next_SP;
 			flag_C <= next_flag_C;
@@ -467,17 +464,14 @@ begin
 		end if;
 	end process;
 
-	-- Here we have combinatorial logic that produce various CPU signals.
-	CPU_MUX : process (all) is
-		variable opcode : opcode_type;
-		variable operand : operand_type;
-
-	begin		opcode := prog_data(instr_len-1 downto instr_len-opcode_len);
-		operand := prog_data(addr_len-1 downto 0);
-		
+	-- Here we have combinatorial logic that produce various MCU signals.
+	MCU_MUX : process (all) is
+	begin		
 		alu_cin <= '0';
 		alu_ctrl <= '1';
-		cpu_addr <= operand;
+		mcu_addr <= operand;
+		WR <= false;
+		DS <= false;
 		
 		case opcode is
 		
@@ -486,7 +480,7 @@ begin
 			alu_ctrl <= '1';
 				
 		when adc_A_m =>
-			alu_cin <= '1';
+			alu_cin <= to_std_logic(flag_C);
 			alu_ctrl <= '1';
 				
 		when sub_A_m =>
@@ -494,12 +488,13 @@ begin
 			alu_ctrl <= '0';
 				
 		when sbc_A_m =>
-			alu_cin <= '1';
+			alu_cin <= to_std_logic(flag_C);
 			alu_ctrl <= '0';
 		
-		when push_A | pop_A | call_n | ret_cll | ret_int =>
-			cpu_addr <= reg_SP;
-
+		when push_A | push_F | call_n =>
+			WR <= true;
+			DS <= true;
+			
 		when others =>
 			null;
 		
@@ -508,8 +503,8 @@ begin
 	
 	-- The ISRV Delay takes RISRV generated on the rising edge of CK
 	-- and delays until the falling edge, so as to match signals written
-	-- to registers by the CPU. The resulting ISRV signal can be used
-	-- to boost the CPU clock in the same way that a write to a BOOST
+	-- to registers by the MCU. The resulting ISRV signal can be used
+	-- to boost the MCU clock in the same way that a write to a BOOST
 	-- and ENFCK register can do the same.
 	ISRV_Delay : process (RESET, CK) is
 	begin

@@ -10,17 +10,17 @@ use ieee.numeric_std.all;
 
 entity main is 
 	port (
-		cpu_data : inout std_logic_vector(7 downto 0);
-		cpu_addr : out std_logic_vector(6 downto 0);
-		CPUWR, CPUDS, IRSV : out std_logic;
+		mcu_data : inout std_logic_vector(7 downto 0);
+		mcu_addr : out std_logic_vector(6 downto 0);
+		MCUWR, MCUDS, IRSV : out std_logic;
 		CK, IRQ, RESET : in std_logic
 	);
 end;
 
 architecture behavior of main is
 
--- CPU data in and out.
-	signal cpu_data_in, cpu_data_out : std_logic_vector(7 downto 0);
+-- Microcontroller data in and out.
+	signal mcu_data_in, mcu_data_out : std_logic_vector(7 downto 0);
 	signal wr_boolean, ds_boolean, irsv_boolean : boolean;
 
 -- Attributes that request signals to be retained instead of distributed.
@@ -34,18 +34,18 @@ architecture behavior of main is
 begin
 
 -- The Bus Controller decides when to drive the data lines.
-	cpu_data <= cpu_data_out when CPUWR else (others => 'Z');
-	cpu_data_in <= cpu_data;
-	CPUWR <= to_std_logic(wr_boolean);
-	CPUDS <= to_std_logic(ds_boolean);
+	mcu_data <= mcu_data_out when MCUWR else (others => 'Z');
+	mcu_data_in <= mcu_data;
+	MCUWR <= to_std_logic(wr_boolean);
+	MCUDS <= to_std_logic(ds_boolean);
 	IRSV <= to_std_logic(irsv_boolean);	
 
 -- The RMC5, configured for this application by its generic map.
-	MCU : entity RMC5_CPU
+	MCU : entity RMC5_MCU
 		port map (
-			cpu_data_out => cpu_data_out,
-			cpu_data_in => cpu_data_in,
-			cpu_addr => cpu_addr,
+			mcu_data_out => mcu_data_out,
+			mcu_data_in => mcu_data_in,
+			mcu_addr => mcu_addr,
 			WR => wr_boolean,
 			DS => ds_boolean,
 			IRQ => (IRQ = '1'),
