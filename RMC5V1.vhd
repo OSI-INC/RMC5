@@ -144,7 +144,7 @@ architecture behavior of RMC5_MCU is
 -- push a byte onto the stack, we write to the stack and then increment
 -- the stack pointer. When we pop from the stack, we decrement the stack
 -- pointer, then read from the stack. 
-	signal reg_SP : opcode_type;
+	signal reg_SP : operand_type;
 	
 -- This signal is the one the MCU sets on the rising edge of CK to
 -- indicated that it is executing an interrupt routine. We will delay
@@ -154,11 +154,10 @@ architecture behavior of RMC5_MCU is
 -- The state values. We use single-bit values to simplify the state
 -- machine logic. We get faster and more compact logic even though we
 -- use eight bits for the state rather than three.
-	signal state : integer range 0 to 3;
+	signal state : integer range 0 to 2;
 	constant read_opcode : integer := 0;
 	constant read_stack : integer := 1;
 	constant incr_pc : integer := 2;
-	constant halt_pc : integer := 3;
 	
 -- Functions and Procedures	
 	function to_std_logic (v: boolean) return std_ulogic is
@@ -235,8 +234,6 @@ begin
 				-- "rti"), which will clear flag_I upon return. Clock Cycles = 1.
 				if IRQ and (not flag_I) then
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
-					mcu_data_out <= (others => '0');
-					mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
 					next_flag_I := true;
 					next_state := read_opcode;
 					next_pc := std_logic_vector(to_unsigned(interrupt_pc,addr_len));
@@ -269,7 +266,6 @@ begin
 					-- Indirect eight-bit write operations using operand as address. Clock 
 					-- Cycles = 1.
 					when ld_m_A =>
-						mcu_data_out <= std_logic_vector(reg_A);
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
@@ -277,16 +273,6 @@ begin
 					-- Cycles = 1.
 					when push_A | push_F => 
 						next_SP := std_logic_vector(unsigned(reg_SP)+1);
-						case opcode is
-							when push_A => 
-								mcu_data_out <= std_logic_vector(reg_A);
-							when push_F =>
-								mcu_data_out <= (others => '0');
-								mcu_data_out(7) <= to_std_logic(flag_I);
-								mcu_data_out(2) <= to_std_logic(flag_C);
-								mcu_data_out(0) <= to_std_logic(flag_Z);
-							when others => null;
-						end case;
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
@@ -366,8 +352,6 @@ begin
 					-- Cycles = 1.
 					when call_n =>
 						next_SP := std_logic_vector(unsigned(reg_SP)+1);
-						mcu_data_out <= (others => '0');
-						mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
 						next_state := read_opcode;
 						next_pc := operand;
 
@@ -445,14 +429,11 @@ begin
 			elsif (state = incr_pc) then
 				next_state := read_opcode;
 				next_pc := std_logic_vector(unsigned(prog_cntr)+1);	
-				
-			-- The halt state is one we include to complete the set of four states available
-			-- to our two-bit state signal.
-			elsif (state = halt_pc) then
-				null;
+
 			end if;
 			
-			-- Assert the new state, program counter, and register values for the next clock cycle.
+			-- Assert the new state, program counter, and register values for the next clock 
+			-- cycle.
 			prog_cntr <= next_pc; 
 			state <= next_state;					
 			reg_A <= next_A;
@@ -470,35 +451,66 @@ begin
 		alu_cin <= '0';
 		alu_ctrl <= '1';
 		mcu_addr <= operand;
+		mcu_data_out <= reg_A;
 		WR <= false;
 		DS <= false;
 		
-		case opcode is
-		
-		when add_A_m =>
-			alu_cin <= '0';
-			alu_ctrl <= '1';
-				
-		when adc_A_m =>
-			alu_cin <= to_std_logic(flag_C);
-			alu_ctrl <= '1';
-				
-		when sub_A_m =>
-			alu_cin <= '0';
-			alu_ctrl <= '0';
-				
-		when sbc_A_m =>
-			alu_cin <= to_std_logic(flag_C);
-			alu_ctrl <= '0';
-		
-		when push_A | push_F | call_n =>
-			WR <= true;
-			DS <= true;
+		if IRQ and (not flag_I) then
+			mcu_data_out <= (others => '0');
+			mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
+		else
+			case opcode is
 			
-		when others =>
-			null;
-		
-		end case;
+			when ld_m_A =>
+				WR <= true;
+				DS <= true;
+			
+			when add_A_m =>
+				alu_cin <= '0';
+				alu_ctrl <= '1';
+					
+			when adc_A_m =>
+				alu_cin <= to_std_logic(flag_C);
+				alu_ctrl <= '1';
+					
+			when sub_A_m =>
+				alu_cin <= '0';
+				alu_ctrl <= '0';
+					
+			when sbc_A_m =>
+				alu_cin <= to_std_logic(flag_C);
+				alu_ctrl <= '0';
+			
+			when push_A =>
+				mcu_addr <= reg_SP;
+				mcu_data_out <= reg_A;
+				WR <= true;
+				DS <= true;
+
+			when push_F =>
+				mcu_addr <= reg_SP;
+				mcu_data_out <= (others => '0');
+				mcu_data_out(7) <= to_std_logic(flag_I);
+				mcu_data_out(2) <= to_std_logic(flag_C);
+				mcu_data_out(0) <= to_std_logic(flag_Z);
+				WR <= true;
+				DS <= true;
+				
+			when call_n =>
+				mcu_addr <= reg_SP;
+				mcu_data_out <= (others => '0');
+				mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
+				WR <= true;
+				DS <= true;
+
+			when pop_A | pop_F | ret_cll | ret_int =>
+				mcu_addr <= reg_SP;
+				
+			when others =>
+				null;
+			
+			end case;
+		end if;
 	end process;
 	
 	-- The ISRV Delay takes RISRV generated on the rising edge of CK
