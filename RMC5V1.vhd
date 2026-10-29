@@ -29,17 +29,23 @@ use ieee.numeric_std.all;
 -- ignored. We might use the operand for other purposes in future versions
 -- of the microcontroller, but for now we are trying to keep it small.
 
--- The instruction memory is built into the processor. The process memory is
--- external. The instruction memory should be read-only memory (ROM) with no-- clock. The program counter connects directly to the ROM and the instruction
--- appears in response with no clock delays. The process memory should be 
--- random-access memory (RAM) with no output register. The output of the RAM-- should be the byte selected by the RAM address, with no read clock. The
--- WR signal tells the RAM that it should not drive a shared data bus. The DS 
--- signal, when combined with WR, tells the RAM to store its input data at the 
--- location selected by its input address. This write should take place on-- the rising edge of CK.
+-- The instruction memory and process memory are external to the MCU entity.
+-- The instruction memory should be read-only memory (ROM) with no clock, so
+-- that it is implemented as combinatorial logic. The program counter connects 
+-- directly to the ROM and the instruction appears in response with no clock 
+-- delays. The process memory should be random-access memory (RAM) with no 
+-- output register. The output of the RAM should be the byte selected by the 
+-- RAM address, with no read clock. The WR signal tells the RAM that it should 
+-- not drive a shared data bus. The DS signal, when combined with WR, tells the 
+-- RAM to store its input data at the location selected by its input address. 
+-- This write should take place on the rising edge of CK.
 
--- The IRQ signal is the interrupt request line from external logic. The memory 
+-- The IRQ input is the interrupt request line from external logic. The memory 
 -- management unit (MMU) must provide a way for the MCU to clear the IRQ signal 
--- so it can get back to its main program.
+-- so it can get back to its main program. The IRSV output is a flag to show
+-- that an interrupt is being serviced. The flag is set on the falling edge of
+-- the clock, which is convenient for the clock boost state machines we tend
+-- to use in our battery-powered devices.
 
 -- The RESET signal will put the program counter back to start_pc and the stack
 -- pointer to zero. The stack is upward-going. The processor expects RAM for
