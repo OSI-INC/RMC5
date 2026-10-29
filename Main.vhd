@@ -1,6 +1,7 @@
--- A3054L Long-Life IPT Firmware, Top-Level Unit
+-- RISC Microcontroller, Five-Bit Opcodes (RMC5) Demonstration Program
 
--- V2.0 [28-OCT-26] Based upon P3054 V1.9. Creating long-life version.
+-- V1.0 [28-OCT-26] The microcontroller data bus and control signals are connected to 
+-- input-output pins, LCMXO2-256ZE in TQFP-100.
 
 
 library ieee;  
