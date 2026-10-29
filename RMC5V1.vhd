@@ -17,7 +17,13 @@
 -- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, 
 -- USA.
 
--- V1.1, [28-OCT-26] 
+-- V1.1, [29-OCT-26] Combinatorial instruction memory interface,
+-- combinatorial read interface with external process memory. The 
+-- Write Data Strobe (WDS) signal marks when the data provided -- by the microcontroller should be written to the process memory
+-- location specified by the mcu address. The WDS signal will be
+-- asserted some combinatorial delay after the rising edge of 
+-- CK on an instruction that writes to process memory. It will
+-- persist until after the next CK rising edge.
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -34,12 +40,13 @@ use ieee.numeric_std.all;
 -- The instruction memory should be read-only memory (ROM) with no clock, so
 -- that it is implemented as combinatorial logic. The program counter connects 
 -- directly to the ROM and the instruction appears in response with no clock 
--- delays. The process memory should be random-access memory (RAM) with no 
--- output register. The output of the RAM should be the byte selected by the 
--- RAM address, with no read clock. The WR signal tells the RAM that it should 
--- not drive a shared data bus. The DS signal, when combined with WR, tells the 
--- RAM to store its input data at the location selected by its input address. 
--- This write should take place on the rising edge of CK.
+-- delays. The process memory should be combinatorial for read cycles and
+-- perform a write to the mcu address location when it sees WDS asserted on
+-- the rising edge of its write clock. The WDS signal also tells the external
+-- logic not drive a shared data bus, if one exist. The write can take place
+-- wither on the falling edge of CK, half a CK period after the instruction
+-- processing begins, or on the rising edge of CK, a whole CK period after 
+-- processing begins.
 
 -- The IRQ input is the interrupt request line from external logic. The memory 
 -- management unit (MMU) must provide a way for the MCU to clear the IRQ signal 
@@ -70,8 +77,7 @@ entity RMC5_MCU is
 		mcu_data_out : out std_logic_vector(data_len-1 downto 0); -- Outgoing Data Bus
 		mcu_data_in : in std_logic_vector(data_len-1 downto 0); -- Incoming Data Bus
 		mcu_addr : out std_logic_vector(addr_len-1 downto 0); -- Outgoing Address Bus
-		WR : out boolean; -- Write Cycle
-		DS : out boolean; -- Data Strobe
+		WDS : out boolean; -- Write Data Strobe
 		IRQ : in boolean; -- Interrupt Request
 		ISRV : out boolean; -- Interrupt Service
 		RESET : in std_logic; -- Hard Reset
@@ -149,7 +155,9 @@ architecture behavior of RMC5_MCU is
 	attribute syn_keep of alu_out : signal is true;
 	attribute nomerge of alu_out : signal is "";	
 
--- Arithmetic Logic Unit control codes.
+-- Arithmetic Logic Unit control codes. Not all of these need be supported by
+-- the MCU instruction set. Any that are not used will be optimized away by
+-- the compiler.
 	constant alu_cmd_add  : alu_ctrl_type := "0000"; -- Add X and Y
 	constant alu_cmd_sub  : alu_ctrl_type := "0001"; -- Subtract Y from X
 	constant alu_cmd_and  : alu_ctrl_type := "0100"; -- Bitwise AND of X and Y
@@ -294,7 +302,7 @@ begin
 			
 		end case;
 		
-		alu_out <= result(data_len-1 downto 0);
+		alu_out <= std_logic_vector(result(data_len-1 downto 0));
 		alu_cout <= result(data_len) = '1';
 	end process;
 
@@ -578,29 +586,26 @@ begin
 		alu_ctrl <= alu_cmd_add;
 		mcu_addr <= operand;
 		mcu_data_out <= reg_A;
-		WR <= false;
-		DS <= false;
+		WDS <= false;
 		
 		if IRQ and (not flag_I) and (state = read_opcode) then
 			mcu_addr <= reg_SP;
 			mcu_data_out <= (others => '0');
 			mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
-			WR <= true;
-			DS <= true;
+			WDS <= true;
 		else
 			case opcode is
 			
 			when ld_m_A =>
-				WR <= true;
-				DS <= true;
+				WDS <= true;
 			
 			when add_A_m =>
 				alu_cin <= false;
 				alu_ctrl <= alu_cmd_add;
 					
 			when adc_A_m =>
-				alu_cin <= to_std_logic(flag_C);
-				alu_ctrl <= alu_cmd_adc;
+				alu_cin <= flag_C;
+				alu_ctrl <= alu_cmd_add;
 					
 			when sub_A_m =>
 				alu_cin <= false;
@@ -608,7 +613,7 @@ begin
 					
 			when sbc_A_m =>
 				alu_cin <= flag_C;
-				alu_ctrl <= alu_cmd_sbc;
+				alu_ctrl <= alu_cmd_sub;
 
 			when and_A_m =>
 				alu_ctrl <= alu_cmd_and;
@@ -628,8 +633,7 @@ begin
 			when push_A =>
 				mcu_addr <= reg_SP;
 				mcu_data_out <= reg_A;
-				WR <= true;
-				DS <= true;
+				WDS <= true;
 
 			when push_F =>
 				mcu_addr <= reg_SP;
@@ -637,16 +641,14 @@ begin
 				mcu_data_out(7) <= to_std_logic(flag_I);
 				mcu_data_out(2) <= to_std_logic(flag_C);
 				mcu_data_out(0) <= to_std_logic(flag_Z);
-				WR <= true;
-				DS <= true;
+				WDS <= true;
 				
 			when call_n =>
 				mcu_addr <= reg_SP;
 				mcu_data_out <= (others => '0');
 				mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
 				if (state = read_opcode) then
-					WR <= true;
-					DS <= true;
+					WDS <= true;
 				end if;
 
 			when pop_A | pop_F | ret_cll | ret_int =>

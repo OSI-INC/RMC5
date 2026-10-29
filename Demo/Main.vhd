@@ -14,8 +14,8 @@ entity main is
 		prog_data : in std_logic_vector(11 downto 0);
 		mcu_data : inout std_logic_vector(7 downto 0);
 		mcu_addr : out std_logic_vector(6 downto 0);
-		MCUWR : inout std_logic;
-		MCUDS, IRSV : out std_logic;
+		MCUWDS : inout std_logic;
+		IRSV : out std_logic;
 		CK, IRQ, RESET : in std_logic
 	);
 end;
@@ -24,7 +24,7 @@ architecture behavior of main is
 
 -- Microcontroller data in and out.
 	signal mcu_data_in, mcu_data_out : std_logic_vector(7 downto 0);
-	signal wr_boolean, ds_boolean, irsv_boolean : boolean;
+	signal wds_boolean, irsv_boolean : boolean;
 
 -- Attributes that request signals to be retained instead of distributed.
 	attribute syn_keep : boolean;
@@ -37,10 +37,9 @@ architecture behavior of main is
 begin
 
 -- The Bus Controller decides when to drive the data lines.
-	mcu_data <= mcu_data_out when MCUWR else (others => 'Z');
+	mcu_data <= mcu_data_out when MCUWDS else (others => 'Z');
 	mcu_data_in <= mcu_data;
-	MCUWR <= to_std_logic(wr_boolean);
-	MCUDS <= to_std_logic(ds_boolean);
+	MCUWDS <= to_std_logic(wds_boolean);
 	IRSV <= to_std_logic(irsv_boolean);	
 
 -- The RMC5, configured for this application by its generic map.
@@ -51,8 +50,7 @@ begin
 			mcu_data_out => mcu_data_out,
 			mcu_data_in => mcu_data_in,
 			mcu_addr => mcu_addr,
-			WR => wr_boolean,
-			DS => ds_boolean,
+			WDS => wds_boolean,
 			IRQ => (IRQ = '1'),
 			ISRV => irsv_boolean,
 			RESET => RESET,

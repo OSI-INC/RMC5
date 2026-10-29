@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<DiamondModule name="ADD8" module="Adder_Subtractor" VendorName="Lattice Semiconductor Corporation" generator="IPexpress" date="2026 10 28 23:31:52.841" version="3.5" type="Module" synthesis="lse" source_format="VHDL">
-  <Package>
-		<File name="ADD8.lpc" type="lpc" modified="2026 10 28 23:31:50.875"/>
-		<File name="ADD8.vhd" type="top_level_vhdl" modified="2026 10 28 23:31:50.969"/>
-		<File name="ADD8_tmpl.vhd" type="template_vhdl" modified="2026 10 28 23:31:50.969"/>
-		<File name="tb_ADD8_tmpl.vhd" type="testbench_vhdl" modified="2026 10 28 23:31:50.969"/>
-  </Package>
-</DiamondModule>
