@@ -14,7 +14,8 @@
 --
 -- You should have received a copy of the GNU General Public License
 -- along with this program; if not, write to the Free Software
--- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+-- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, 
+-- USA.
 
 -- V1.1, [28-OCT-26] 
 
@@ -61,7 +62,7 @@ entity RMC5_MCU is
 		start_sp : integer := 0;
 		opcode_len : integer := 5;
 		operand_len : integer := addr_len;
-		instr_len : integer := opcode_len + operand_len
+		instr_len : integer := opcode_len+operand_len
 	);
 	port (
 		prog_cntr : out std_logic_vector(addr_len-1 downto 0); -- Outgoing Program Counter
@@ -93,33 +94,43 @@ architecture behavior of RMC5_MCU is
 -- language. We use "(n)" for the contents of process memory address "n",
 -- "jp nz" for jump if not zero, "ld" for "load", and so on. Our syntax for 
 -- assembler code follows that of the venerable Z80 microprocessor.
-	constant nop      : opcode_type := "00000"; -- 00 nop
-	constant jp_n     : opcode_type := "00001"; -- 01 jp n
-	constant jp_nz_n  : opcode_type := "00010"; -- 02 jp nz,nn
-	constant jp_z_n   : opcode_type := "00011"; -- 03 jp z,nn
-	constant jp_nc_n  : opcode_type := "00100"; -- 04 jp nc,nn
-	constant jp_c_n   : opcode_type := "00101"; -- 05 jp c,nn
-	constant call_n   : opcode_type := "00110"; -- 06 call nn
-	constant ret_cll  : opcode_type := "00111"; -- 07 ret
-	constant ret_int  : opcode_type := "01000"; -- 08 rti
-	constant clr_iflg : opcode_type := "01001"; -- 09 clri
-	constant set_iflg : opcode_type := "01010"; -- 0A seti
-	constant push_A   : opcode_type := "01011"; -- 0B push A
-	constant pop_A    : opcode_type := "01100"; -- 0C pop A
-	constant add_A_m  : opcode_type := "01101"; -- 0D add A,(n)
-	constant adc_A_m  : opcode_type := "01110"; -- 0E adc A,(n)
-	constant sub_A_m  : opcode_type := "01111"; -- 0F sub A,(n)
-	constant sbc_A_m  : opcode_type := "10000"; -- 10 sbc A,(n)
-	constant and_A_m  : opcode_type := "10001"; -- 11 and A,(n)
-	constant or_A_m   : opcode_type := "10010"; -- 12 or A,(n)
-	constant xor_A_m  : opcode_type := "10011"; -- 13 xor A,(n)
-	constant rl_A     : opcode_type := "10100"; -- 14 rl A
-	constant rr_A     : opcode_type := "10101"; -- 15 rr A
-	constant clr_aflg : opcode_type := "10110"; -- 16 clrf
-	constant push_F   : opcode_type := "10111"; -- 17 push F
-	constant pop_F    : opcode_type := "11000"; -- 18 pop F
-	constant ld_A_m   : opcode_type := "11001"; -- 19 ld A,(n)
-	constant ld_m_A   : opcode_type := "11010"; -- 19 ld (n),A
+
+-- Program flow: 00-07
+constant nop      : opcode_type := "00000"; -- 00 nop
+constant jp_n     : opcode_type := "00001"; -- 01 jp n
+constant jp_nz_n  : opcode_type := "00010"; -- 02 jp nz,n
+constant jp_z_n   : opcode_type := "00011"; -- 03 jp z,n
+constant jp_nc_n  : opcode_type := "00100"; -- 04 jp nc,n
+constant jp_c_n   : opcode_type := "00101"; -- 05 jp c,n
+constant call_n   : opcode_type := "00110"; -- 06 call n
+constant ret_cll  : opcode_type := "00111"; -- 07 ret
+
+-- Stack, interrupt return, and memory transfer: 08-0E
+constant ret_int  : opcode_type := "01000"; -- 08 rti
+constant push_A   : opcode_type := "01001"; -- 09 push A
+constant pop_A    : opcode_type := "01010"; -- 0A pop A
+constant push_F   : opcode_type := "01011"; -- 0B push F
+constant pop_F    : opcode_type := "01100"; -- 0C pop F
+constant ld_m_A   : opcode_type := "01101"; -- 0D ld (n),A
+constant ld_A_m   : opcode_type := "01110"; -- 0E ld A,(n)
+
+-- Arithmetic: 10-13
+constant add_A_m  : opcode_type := "10000"; -- 10 add A,(n)
+constant adc_A_m  : opcode_type := "10001"; -- 11 adc A,(n)
+constant sub_A_m  : opcode_type := "10010"; -- 12 sub A,(n)
+constant sbc_A_m  : opcode_type := "10011"; -- 13 sbc A,(n)
+
+-- Logic: 14-16
+constant and_A_m  : opcode_type := "10100"; -- 14 and A,(n)
+constant or_A_m   : opcode_type := "10101"; -- 15 or A,(n)
+constant xor_A_m  : opcode_type := "10110"; -- 16 xor A,(n)
+
+-- Rotations and flag control: 18-1C
+constant rl_A     : opcode_type := "11000"; -- 18 rl A
+constant rr_A     : opcode_type := "11001"; -- 19 rr A
+constant clr_aflg : opcode_type := "11010"; -- 1A clrf
+constant clr_iflg : opcode_type := "11011"; -- 1B clri
+constant set_iflg : opcode_type := "11100"; -- 1C seti
 	
 -- Attributes to guide the compiler.
 	attribute syn_keep : boolean;
@@ -517,7 +528,7 @@ begin
 			
 			end case;
 		end if;
-end process;
+	end process;
 	
 	-- The ISRV Delay takes RISRV generated on the rising edge of CK
 	-- and delays until the falling edge, so as to match signals written
