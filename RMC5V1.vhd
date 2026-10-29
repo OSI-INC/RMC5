@@ -95,52 +95,73 @@ architecture behavior of RMC5_MCU is
 -- "jp nz" for jump if not zero, "ld" for "load", and so on. Our syntax for 
 -- assembler code follows that of the venerable Z80 microprocessor.
 
--- Program flow: 00-07
-constant nop      : opcode_type := "00000"; -- 00 nop
-constant jp_n     : opcode_type := "00001"; -- 01 jp n
-constant jp_nz_n  : opcode_type := "00010"; -- 02 jp nz,n
-constant jp_z_n   : opcode_type := "00011"; -- 03 jp z,n
-constant jp_nc_n  : opcode_type := "00100"; -- 04 jp nc,n
-constant jp_c_n   : opcode_type := "00101"; -- 05 jp c,n
-constant call_n   : opcode_type := "00110"; -- 06 call n
-constant ret_cll  : opcode_type := "00111"; -- 07 ret
+	-- Program flow: 00-07
+	constant nop      : opcode_type := "00000"; -- 00 nop
+	constant jp_n     : opcode_type := "00001"; -- 01 jp n
+	constant jp_nz_n  : opcode_type := "00010"; -- 02 jp nz,n
+	constant jp_z_n   : opcode_type := "00011"; -- 03 jp z,n
+	constant jp_nc_n  : opcode_type := "00100"; -- 04 jp nc,n
+	constant jp_c_n   : opcode_type := "00101"; -- 05 jp c,n
+	constant call_n   : opcode_type := "00110"; -- 06 call n
+	constant ret_cll  : opcode_type := "00111"; -- 07 ret
 
--- Stack, interrupt return, and memory transfer: 08-0E
-constant ret_int  : opcode_type := "01000"; -- 08 rti
-constant push_A   : opcode_type := "01001"; -- 09 push A
-constant pop_A    : opcode_type := "01010"; -- 0A pop A
-constant push_F   : opcode_type := "01011"; -- 0B push F
-constant pop_F    : opcode_type := "01100"; -- 0C pop F
-constant ld_m_A   : opcode_type := "01101"; -- 0D ld (n),A
-constant ld_A_m   : opcode_type := "01110"; -- 0E ld A,(n)
+	-- Stack, interrupt return, and memory transfer: 08-0E
+	constant ret_int  : opcode_type := "01000"; -- 08 rti
+	constant push_A   : opcode_type := "01001"; -- 09 push A
+	constant pop_A    : opcode_type := "01010"; -- 0A pop A
+	constant push_F   : opcode_type := "01011"; -- 0B push F
+	constant pop_F    : opcode_type := "01100"; -- 0C pop F
+	constant ld_m_A   : opcode_type := "01101"; -- 0D ld (n),A
+	constant ld_A_m   : opcode_type := "01110"; -- 0E ld A,(n)
 
--- Arithmetic: 10-13
-constant add_A_m  : opcode_type := "10000"; -- 10 add A,(n)
-constant adc_A_m  : opcode_type := "10001"; -- 11 adc A,(n)
-constant sub_A_m  : opcode_type := "10010"; -- 12 sub A,(n)
-constant sbc_A_m  : opcode_type := "10011"; -- 13 sbc A,(n)
+	-- Arithmetic: 10-13
+	constant add_A_m  : opcode_type := "10000"; -- 10 add A,(n)
+	constant adc_A_m  : opcode_type := "10001"; -- 11 adc A,(n)
+	constant sub_A_m  : opcode_type := "10010"; -- 12 sub A,(n)
+	constant sbc_A_m  : opcode_type := "10011"; -- 13 sbc A,(n)
 
--- Logic: 14-16
-constant and_A_m  : opcode_type := "10100"; -- 14 and A,(n)
-constant or_A_m   : opcode_type := "10101"; -- 15 or A,(n)
-constant xor_A_m  : opcode_type := "10110"; -- 16 xor A,(n)
+	-- Logic: 14-16
+	constant and_A_m  : opcode_type := "10100"; -- 14 and A,(n)
+	constant or_A_m   : opcode_type := "10101"; -- 15 or A,(n)
+	constant xor_A_m  : opcode_type := "10110"; -- 16 xor A,(n)
 
--- Rotations and flag control: 18-1C
-constant rl_A     : opcode_type := "11000"; -- 18 rl A
-constant rr_A     : opcode_type := "11001"; -- 19 rr A
-constant clr_aflg : opcode_type := "11010"; -- 1A clrf
-constant clr_iflg : opcode_type := "11011"; -- 1B clri
-constant set_iflg : opcode_type := "11100"; -- 1C seti
+	-- Rotations and flag control: 18-1C
+	constant rl_A     : opcode_type := "11000"; -- 18 rl A
+	constant rr_A     : opcode_type := "11001"; -- 19 rr A
+	constant clr_aflg : opcode_type := "11010"; -- 1A clrf
+	constant clr_iflg : opcode_type := "11011"; -- 1B clri
+	constant set_iflg : opcode_type := "11100"; -- 1C seti
 	
 -- Attributes to guide the compiler.
 	attribute syn_keep : boolean;
 	attribute nomerge : string;
 
--- Arithmetic Logic Unit inputs and outputs.
-	signal alu_cin, alu_ctrl, alu_cout : std_logic;
-	signal alu_out : std_logic_vector(7 downto 0);
+-- Arithmetic Logic Unit inputs.
+	signal alu_in_x, alu_in_y : data_type;
+	signal alu_cin : boolean;
+	subtype alu_ctrl_type is unsigned(3 downto 0);
+	signal alu_ctrl : alu_ctrl_type;
+
+-- Arithmetic Logic Unit outputs. We force the compiler to keep the 
+-- main alu output signal. Doing so reduces the code size.
+	signal alu_out : data_type;
+	signal alu_cout : boolean;
 	attribute syn_keep of alu_out : signal is true;
 	attribute nomerge of alu_out : signal is "";	
+
+-- Arithmetic Logic Unit control codes.
+	constant alu_cmd_add  : alu_ctrl_type := "0000"; -- Add X and Y
+	constant alu_cmd_sub  : alu_ctrl_type := "0001"; -- Subtract Y from X
+	constant alu_cmd_and  : alu_ctrl_type := "0100"; -- Bitwise AND of X and Y
+	constant alu_cmd_xor  : alu_ctrl_type := "0101"; -- Bitwise XOR of X and Y
+	constant alu_cmd_or   : alu_ctrl_type := "0110"; -- Bitwise OR of X and Y
+	constant alu_cmd_rl   : alu_ctrl_type := "1000"; -- Rotate Left of X
+	constant alu_cmd_rlc  : alu_ctrl_type := "1001"; -- Rotate Left Circuiar of X
+	constant alu_cmd_sla  : alu_ctrl_type := "1010"; -- Shift Left Arithmetic of X
+	constant alu_cmd_rr   : alu_ctrl_type := "1100"; -- Rotate Right of X
+	constant alu_cmd_rrc  : alu_ctrl_type := "1101"; -- Rotate Right Circular of X
+	constant alu_cmd_sra  : alu_ctrl_type := "1110"; -- Shift Right Arithmetic of X
+	constant alu_cmd_srl  : alu_ctrl_type := "1111"; -- Shift Right Logical of X
 
 -- Instruction fields.
 	signal opcode : opcode_type;
@@ -187,14 +208,95 @@ begin
 	opcode <= prog_data(instr_len-1 downto instr_len-opcode_len);
 	operand <= prog_data(addr_len-1 downto 0);
 
--- The ALU is an eight-bit adder-subtractor.
-	ALU : entity ADD8 port map (
-		DataA => reg_A,
-        DataB => mcu_data_in,
-        Cin => alu_cin,
-        Add_Sub => alu_ctrl,
-		Cout => alu_cout,
-        Result => alu_out);
+-- The Arithmetic Logic Unit provides an eight-bit adder-subtractor with 
+-- carry in and carry out, as well as logical operations AND, OR, and XOR.
+	ALU : process (all) is
+	variable result : unsigned(data_len downto 0);
+	variable inx, iny : unsigned(data_len-1 downto 0); 
+	begin 
+		inx := unsigned(alu_in_x);
+		iny := unsigned(alu_in_y);
+		result := ('0' & inx) + ('0' & iny);
+		
+		case alu_ctrl is
+		
+		-- Add X and Y with Carry
+		when alu_cmd_add =>
+			if alu_cin then 
+				result := ('0' & inx) + ('0' & iny) + "000000001";
+			else 
+				result := ('0' & inx) + ('0' & iny); 
+			end if;
+			
+		-- Subtract Y from X with Borrow
+		when alu_cmd_sub =>
+			if alu_cin then 
+				result := ('0' & inx) - ('0' & iny) - "000000001";
+			else 
+				result := ('0' & inx) - ('0' & iny); 
+			end if;
+			
+		-- Bit-Wise Exclusive OR of A and B
+		when alu_cmd_xor =>
+			result := '0' & (inx xor iny);
+			
+		-- Bit-Wise OR of A and B
+		when alu_cmd_or =>
+			result := '0' & (inx or iny);
+					
+		-- Bit-Wise Logical AND of X and Y
+		when alu_cmd_and =>
+			result := '0' & (inx and iny);
+					
+		-- Rotate Left of X.
+		when alu_cmd_rl  => 
+			result(data_len downto 1) := inx(data_len-1 downto 0);
+			result(0) := to_std_logic(alu_cin);	
+			
+		 -- Rotate Left Circuiar of X
+		when alu_cmd_rlc => 
+			result(data_len-1 downto 1) := inx(data_len-2 downto 0);
+			result(0) := inx(data_len-1);	
+			result(data_len) := inx(data_len-1);
+			
+		-- Rotate Right of X
+		when alu_cmd_rr  =>
+			result(data_len-1) := to_std_logic(alu_cin);
+			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
+			result(data_len) := inx(0);		
+			
+		-- Rotate Right Circular of X
+		when alu_cmd_rrc =>  
+			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
+			result(data_len-1) := inx(0);		
+			result(data_len) := inx(0);		
+			
+		-- Shift Left Arithmetic of X
+		when alu_cmd_sla =>  
+			result(data_len downto 1) := inx(data_len-1 downto 0);
+			result(0) :='0';	
+			
+		-- Shift Right Arithmetic of X
+		when alu_cmd_sra =>  
+			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
+			result(data_len-1) := inx(data_len-1);		
+			result(data_len) := inx(0);		
+			
+		-- Shift Right Logical of X
+		when alu_cmd_srl => 
+			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
+			result(data_len-1) := '0';		
+			result(data_len) := inx(0);		
+
+		-- Let the default values stand.
+		when others =>
+			null;
+			
+		end case;
+		
+		alu_out <= result(data_len-1 downto 0);
+		alu_cout <= result(data_len) = '1';
+	end process;
 
 -- The Central Processing Unit reads and writes from instruction, process, and 
 -- stack memory.
@@ -298,44 +400,42 @@ begin
 					when add_A_m | sub_A_m | adc_A_m | sbc_A_m =>
 						next_A := alu_out;
 						next_flag_Z := (unsigned(alu_out) = 0);
-						next_flag_C := (alu_cout = '1');
+						next_flag_C := alu_cout;
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Eight-bit logical AND. Sets the Z flag only. Clock Cycles = 1.
 					when and_A_m  => 
-						next_A := reg_A and mcu_data_in;
-						next_flag_Z := (unsigned(next_A) = 0);
+						next_A := alu_out;
+						next_flag_Z := (unsigned(alu_out) = 0);
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Eight-bit logical OR. Sets the Z flag only. Clock Cycles = 1.
 					when or_A_m  => 
-						next_A := reg_A or mcu_data_in;
-						next_flag_Z := (unsigned(next_A) = 0);
+						next_A := alu_out;
+						next_flag_Z := (unsigned(alu_out) = 0);
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Eight-bit logical XOR. Sets the Z flag only. Clock Cycles = 1.
 					when xor_A_m  => 
-						next_A := reg_A xor mcu_data_in;
-						next_flag_Z := (unsigned(next_A) = 0);
+						next_A := alu_out;
+						next_flag_Z := (unsigned(alu_out) = 0);
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Rotate left. Set C flag. Clock Cycles = 1.
 					when rl_A =>
-						next_A(7 downto 1) := reg_A(6 downto 0);
-						next_A(0) := to_std_logic(flag_C);
-						next_flag_C := (reg_A(7) = '1');
+						next_A := alu_out;
+						next_flag_C := alu_cout;
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 						
 					-- Rotate right. Set C flag. Clock Cycles = 1.
 					when rr_A =>
-						next_A(6 downto 0) := reg_A(7 downto 1);
-						next_A(7) := to_std_logic(flag_C);
-						next_flag_C := (reg_A(0) = '1');
+						next_A := alu_out;
+						next_flag_C := alu_cout;
 						next_state := read_opcode;
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 						
@@ -444,6 +544,20 @@ begin
 
 			end if;
 			
+			-- Update Z after arithmetic and logical operations.
+			if (state = read_opcode) and
+			   ((opcode = add_A_m) or
+				(opcode = adc_A_m) or
+				(opcode = sub_A_m) or
+				(opcode = sbc_A_m) or
+				(opcode = and_A_m) or
+				(opcode = or_A_m) or
+				(opcode = xor_A_m)) and
+			   not (IRQ and (not flag_I)) then
+
+				next_flag_Z := (unsigned(next_A) = 0);
+			end if;
+						
 			-- Assert the new state, program counter, and register values for the next clock 
 			-- cycle.
 			prog_cntr <= next_pc; 
@@ -460,8 +574,8 @@ begin
 	-- Here we have combinatorial logic that produce various MCU signals.
 	MCU_MUX : process (all) is
 	begin		
-		alu_cin <= '0';
-		alu_ctrl <= '1';
+		alu_cin <= false;
+		alu_ctrl <= alu_cmd_add;
 		mcu_addr <= operand;
 		mcu_data_out <= reg_A;
 		WR <= false;
@@ -481,20 +595,35 @@ begin
 				DS <= true;
 			
 			when add_A_m =>
-				alu_cin <= '0';
-				alu_ctrl <= '1';
+				alu_cin <= false;
+				alu_ctrl <= alu_cmd_add;
 					
 			when adc_A_m =>
 				alu_cin <= to_std_logic(flag_C);
-				alu_ctrl <= '1';
+				alu_ctrl <= alu_cmd_adc;
 					
 			when sub_A_m =>
-				alu_cin <= '0';
-				alu_ctrl <= '0';
+				alu_cin <= false;
+				alu_ctrl <= alu_cmd_sub;
 					
 			when sbc_A_m =>
-				alu_cin <= to_std_logic(flag_C);
-				alu_ctrl <= '0';
+				alu_cin <= flag_C;
+				alu_ctrl <= alu_cmd_sbc;
+
+			when and_A_m =>
+				alu_ctrl <= alu_cmd_and;
+			
+			when or_A_m =>
+				alu_ctrl <= alu_cmd_or;
+							
+			when xor_A_m =>
+				alu_ctrl <= alu_cmd_xor;
+				
+			when rr_A =>
+				alu_ctrl <= alu_cmd_rr;
+				
+			when rl_A =>
+				alu_ctrl <= alu_cmd_rl;
 			
 			when push_A =>
 				mcu_addr <= reg_SP;
