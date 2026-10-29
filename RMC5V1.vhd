@@ -2,7 +2,7 @@
 --
 -- Copyright (C) 2026 Kevan Hashemi, Open Source Instruments Inc.
 --
--- This program is free software; you can redistribute it and/orpr
+-- This program is free software; you can redistribute it and/or
 -- modify it under the terms of the GNU General Public License
 -- as published by the Free Software Foundation; either version 2
 -- of the License, or (at your option) any later version.
@@ -151,9 +151,7 @@ architecture behavior of RMC5_MCU is
 -- until the falling edge of CK to make ISRV.
 	signal RISRV : boolean;
 	
--- The state values. We use single-bit values to simplify the state
--- machine logic. We get faster and more compact logic even though we
--- use eight bits for the state rather than three.
+-- The state values.
 	signal state : integer range 0 to 2;
 	constant read_opcode : integer := 0;
 	constant read_stack : integer := 1;
@@ -201,6 +199,7 @@ begin
 			state <= read_opcode;
 			prog_cntr <= std_logic_vector(to_unsigned(start_pc,addr_len)); 
 			reg_SP <= std_logic_vector(to_unsigned(start_sp,addr_len)); 
+			reg_A <= (others => '0');
 			flag_Z <= false;
 			flag_C <= false;
 			flag_I <= false;
@@ -455,9 +454,12 @@ begin
 		WR <= false;
 		DS <= false;
 		
-		if IRQ and (not flag_I) then
+		if IRQ and (not flag_I) and (state = read_opcode) then
+			mcu_addr <= reg_SP;
 			mcu_data_out <= (others => '0');
 			mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
+			WR <= true;
+			DS <= true;
 		else
 			case opcode is
 			

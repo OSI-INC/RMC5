@@ -2,7 +2,7 @@
 -- Module  Version: 2.8
 --C:\lscc\diamond\3.12\ispfpga\bin\nt64\scuba.exe -w -n ROM -lang vhdl -synth synplify -bus_exp 7 -bb -arch xo2c00 -type rom -addr_width 7 -num_rows 128 -data_width 12 -outdata UNREGISTERED -memfile c:/kevan/rmc5/demo/rom.mem -memformat hex 
 
--- Thu Oct 29 09:42:54 2026
+-- Thu Oct 29 10:53:38 2026
 
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -32,73 +32,73 @@ architecture Structure of ROM is
 begin
     -- component instantiation statements
     mem_0_11: ROM128X1A
-        generic map (initval=> X"00000000000000000000000000000000")
+        generic map (initval=> X"8C9B8577CA9C357CA6090E050338F786")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(11));
 
     mem_0_10: ROM128X1A
-        generic map (initval=> X"00000000000000000000000000000000")
+        generic map (initval=> X"E5EA7D430027A57221B5E58DD7395F85")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(10));
 
     mem_0_9: ROM128X1A
-        generic map (initval=> X"00000000000000000000000000000000")
+        generic map (initval=> X"BAB6C1066AD38846663E5DF963DA6661")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(9));
 
     mem_0_8: ROM128X1A
-        generic map (initval=> X"00000000000000000000000000000000")
+        generic map (initval=> X"F6EEF50B282A49364E2A60EB1ACA9C88")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(8));
 
     mem_0_7: ROM128X1A
-        generic map (initval=> X"00800000000000004200000000000000")
+        generic map (initval=> X"B8CFCA7990AA08D552C2CE274328994A")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(7));
 
     mem_0_6: ROM128X1A
-        generic map (initval=> X"0058000400022100430D000008404000")
+        generic map (initval=> X"22D208AAF910445F0BD5DD02F4381E65")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(6));
 
     mem_0_5: ROM128X1A
-        generic map (initval=> X"18189999FBF39EF04FF5F3FB884047C4")
+        generic map (initval=> X"F666C216DD445A3186DF73E263CDB050")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(5));
 
     mem_0_4: ROM128X1A
-        generic map (initval=> X"3324333203F114A08BADAE0384484C04")
+        generic map (initval=> X"53370ED2AA57FE687C175417126CD5A7")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(4));
 
     mem_0_3: ROM128X1A
-        generic map (initval=> X"011B0004041000023000000440242000")
+        generic map (initval=> X"4BCD22A17F0E46DF02B28FE523F99DBD")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(3));
 
     mem_0_2: ROM128X1A
-        generic map (initval=> X"102081118A110C494862400A00A8A866")
+        generic map (initval=> X"97775124505496C32F2A3058EB117253")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(2));
 
     mem_0_1: ROM128X1A
-        generic map (initval=> X"5022D5014E662459084622CE55050040")
+        generic map (initval=> X"ACE3E5879D05833C99FCF452300686E8")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(1));
 
     mem_0_0: ROM128X1A
-        generic map (initval=> X"24586014AAA32820012742AACC65657B")
+        generic map (initval=> X"62854CB5ABD9FECA184D2737BFB6F7E5")
         port map (AD6=>Address(6), AD5=>Address(5), AD4=>Address(4), 
             AD3=>Address(3), AD2=>Address(2), AD1=>Address(1), 
             AD0=>Address(0), DO0=>Q(0));
