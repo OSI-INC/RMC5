@@ -1,4 +1,4 @@
-# RISC Microcontroller, Five-Bit Opcodes (RMC5)
+# Reduced Instruction Set Microcontroller, Five-Bit Opcodes (RMC5)
 
 The RMC5 is an open-source eight-bit microcontroller with fixed seven-bit 
 instruction and process memory address, five-bit opcodes and twelve-bit
