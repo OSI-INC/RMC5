@@ -30,19 +30,36 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 -- The microcontroller requires seperate instruction and process memories. 
--- Both memories have maximum size 128 locations. The instruction
--- memory locations are 12 bits long: 5 for opcode and 7 for an
--- operand. The operand can be an address in either memories, or it can be
--- ignored. We might use the operand for other purposes in future versions
--- of the microcontroller, but for now we are trying to keep it small.
+-- Both memories have maximum size set by 2**addr_len. The instruction
+-- memory locations each contain a five-bit opcode in the top five bits
+-- and addr_len bits for the operand. The operand can be an address in 
+-- either the instruction or process memory, or it can be ignored. It is
+-- never a constant value: we obtain constants by pre-loading them into
+-- process memory locations and reading them using the memory access 
+-- instructions. The process memory locations always contain eight-bit
+-- values.
 
--- The instruction memory and process memory are external to the MCU entity.
--- The instruction memory should be read-only memory (ROM) with no clock, so
--- that it is implemented as combinatorial logic. The program counter connects 
+-- The stack is internal to this entity, its length being set by the 
+-- sp_len genric constant. The width of the stack entries is the greater
+-- of the data width, which is always eight, and the address length, 
+-- which can be any value. The stack provides asynchronous reads and
+-- synchronous writes.
+
+-- The instruction memory and process memory are external to this entity.
+-- The instruction memory should be pre-loaded read-only with no clock, so
+-- that it is implemented as combinatorial logic. If the program memory is
+-- implemented as distributed RAM, the compiler will see what instructions
+-- are going to be executed and will be able to eliminate the logic that 
+-- implements unused instructions. If the program memory is implemented in
+-- embedded RAM blocks, we will have more space for code, but the compiler
+-- will not be able to perform its optimization. The logic for all
+-- instructions will remain in place. The program counter connects 
 -- directly to the ROM and the instruction appears in response with no clock 
--- delays. The process memory should be combinatorial for read cycles and
--- perform a write to the mcu address location when it sees WDS asserted on
--- the rising edge of its write clock. The WDS signal also tells the external
+-- delays. 
+
+-- The process memory should be combinatorial for read cycles and perform 
+-- a write to the mcu address location when it sees WDS asserted on the 
+-- rising edge of its write clock. The WDS signal also tells the external
 -- logic not drive a shared data bus, if one exist. The write can take place
 -- wither on the falling edge of CK, half a CK period after the instruction
 -- processing begins, or on the rising edge of CK, a whole CK period after 
@@ -601,11 +618,11 @@ begin
 	begin		
 		mcu_addr <= operand;
 		mcu_data_out <= reg_A;
+		stack_data_in <= (others => '0');
 		WDS <= false;
 		WRST <= false;
 		
 		if IRQ and (not flag_I) and (state = read_opcode) then
-			stack_data_in <= (others => '0');
 			stack_data_in(addr_len-1 downto 0) <= prog_cntr;
 			WRST <= true;
 		else
@@ -615,19 +632,20 @@ begin
 				WDS <= true;
 			
 			when push_A =>
-				stack_data_in <= (others => '0');
 				stack_data_in(data_len-1 downto 0) <= reg_A;
-				WRST <= true;
+				if (state = read_opcode) then
+					WRST <= true;
+				end if;
 
 			when push_F =>
-				stack_data_in <= (others => '0');
 				stack_data_in(2) <= to_std_logic(flag_I);
 				stack_data_in(1) <= to_std_logic(flag_C);
 				stack_data_in(0) <= to_std_logic(flag_Z);
-				WRST <= true;
+				if (state = read_opcode) then
+					WRST <= true;
+				end if;
 				
 			when call_n =>
-				stack_data_in <= (others => '0');
 				stack_data_in(addr_len-1 downto 0) <= prog_cntr;
 				if (state = read_opcode) then
 					WRST <= true;
@@ -684,11 +702,11 @@ begin
 		end case;
 end process;
 	
-	-- The ISRV Delay takes RISRV generated on the rising edge of CK
-	-- and delays until the falling edge, so as to match signals written
-	-- to registers by the MCU. The resulting ISRV signal can be used
-	-- to boost the MCU clock in the same way that a write to a BOOST
-	-- and ENFCK register can do the same.
+-- The ISRV Delay takes RISRV generated on the rising edge of CK
+-- and delays until the falling edge, so as to match signals written
+-- to registers by the MCU. The resulting ISRV signal can be used
+-- to boost the MCU clock in the same way that a write to a BOOST
+-- and ENFCK register can do the same.
 	ISRV_Delay : process (RESET, CK) is
 	begin
 		if (RESET = '1') then
