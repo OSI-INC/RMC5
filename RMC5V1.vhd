@@ -66,10 +66,10 @@ entity RMC5_MCU is
 		data_len : integer := 8;
 		start_pc : integer := 0;
 		interrupt_pc : integer := 3;
-		start_sp : integer := 0;
 		opcode_len : integer := 5;
 		operand_len : integer := addr_len;
-		instr_len : integer := opcode_len+operand_len
+		instr_len : integer := opcode_len+operand_len;
+        sp_len : positive := 3
 	);
 	port (
 		prog_cntr : out std_logic_vector(addr_len-1 downto 0); -- Outgoing Program Counter
@@ -142,6 +142,20 @@ architecture behavior of RMC5_MCU is
 	attribute syn_keep : boolean;
 	attribute nomerge : string;
 
+-- Translate boolean to std_logic.
+	function to_std_logic (v: boolean) return std_ulogic is
+	begin if v then return('1'); else return('0'); end if; end function;
+
+-- Obtain the maximum of two integers.
+	function max_int(a, b : integer) return integer is
+	begin
+		if a > b then
+			return a;
+		else
+			return b;
+		end if;
+	end function;
+
 -- Arithmetic Logic Unit inputs.
 	signal alu_in_x, alu_in_y : data_type;
 	signal alu_cin : boolean;
@@ -192,7 +206,15 @@ architecture behavior of RMC5_MCU is
 -- push a byte onto the stack, we write to the stack and then increment
 -- the stack pointer. When we pop from the stack, we decrement the stack
 -- pointer, then read from the stack. 
-	signal reg_SP : operand_type;
+	constant stack_depth : positive := 2**sp_len;
+	constant stack_width : positive := max_int(data_len, addr_len);
+	type stack_type is array (0 to stack_depth-1)
+		of std_logic_vector(stack_width-1 downto 0);
+	signal stack_mem : stack_type;
+	signal reg_SP : std_logic_vector(sp_len-1 downto 0);
+	signal stack_data_out : std_logic_vector(stack_width-1 downto 0);
+	signal stack_data_in : std_logic_vector(stack_width-1 downto 0);
+	signal WRST : boolean;
 	
 -- This signal is the one the MCU sets on the rising edge of CK to
 -- indicated that it is executing an interrupt routine. We will delay
@@ -204,13 +226,21 @@ architecture behavior of RMC5_MCU is
 	constant read_opcode : integer := 0;
 	constant read_stack : integer := 1;
 	constant incr_pc : integer := 2;
-	
--- Functions and Procedures	
-	function to_std_logic (v: boolean) return std_ulogic is
-	begin if v then return('1'); else return('0'); end if; end function;
-
+		
 begin 
 
+-- The stack is a separate memory of width equal to the greater of the
+-- data and operand widths.
+	process (CK)
+	begin
+		if rising_edge(CK) then
+			if WRST then
+				stack_mem(to_integer(unsigned(reg_SP))) <= stack_data_in;
+			end if;
+		end if;
+	end process;
+	stack_data_out <= stack_mem(to_integer(unsigned(reg_SP)));
+	
 -- Global opcode and operand variables separate the top and bottom sections
 -- of the instruction that is currently output from the instruction memory.
 	opcode <= prog_data(instr_len-1 downto instr_len-opcode_len);
@@ -311,7 +341,8 @@ begin
 	MCU : process (CK, RESET) is
 	variable next_A : data_type;
 	variable next_flag_Z, next_flag_C, next_flag_I : boolean;
-	variable next_pc, next_SP : operand_type;
+	variable next_pc : operand_type;
+	variable next_SP : std_logic_vector(sp_len-1 downto 0);
 	variable next_RISRV : boolean;
 	variable next_state : integer range 0 to 3;
 						
@@ -321,7 +352,7 @@ begin
 		if (RESET ='1') then 
 			state <= read_opcode;
 			prog_cntr <= std_logic_vector(to_unsigned(start_pc,addr_len)); 
-			reg_SP <= std_logic_vector(to_unsigned(start_sp,addr_len)); 
+			reg_SP <= (others => '0'); 
 			reg_A <= (others => '0');
 			flag_Z <= false;
 			flag_C <= false;
@@ -514,11 +545,11 @@ begin
 				-- flag or registesr.
 				when pop_A | pop_F =>
 					case opcode is
-						when pop_A => next_A := mcu_data_in;
+						when pop_A => next_A := stack_data_out(data_len-1 downto 0);
 						when pop_F => 
-							next_flag_I := (mcu_data_in(7) = '1');
-							next_flag_C := (mcu_data_in(2) = '1');		
-							next_flag_Z := (mcu_data_in(0) = '1');
+							next_flag_I := (stack_data_out(2) = '1');
+							next_flag_C := (stack_data_out(1) = '1');		
+							next_flag_Z := (stack_data_out(0) = '1');
 						when others => null;
 					end case;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
@@ -527,12 +558,12 @@ begin
 				-- Read the program counter from the stack. After this, we are going
 				-- to increment the counter.
 				when ret_cll =>
-					next_pc := mcu_data_in(addr_len-1 downto 0);
+					next_pc := stack_data_out(addr_len-1 downto 0);
 					next_state := incr_pc;	
 					
 				-- Read the program counter from the stack and continue execution.
 				when ret_int =>
-					next_pc := mcu_data_in(addr_len-1 downto 0);
+					next_pc := stack_data_out(addr_len-1 downto 0);
 					next_flag_I := false;
 					next_RISRV := false;
 					next_state := read_opcode;
@@ -571,12 +602,12 @@ begin
 		mcu_addr <= operand;
 		mcu_data_out <= reg_A;
 		WDS <= false;
+		WRST <= false;
 		
 		if IRQ and (not flag_I) and (state = read_opcode) then
-			mcu_addr <= reg_SP;
-			mcu_data_out <= (others => '0');
-			mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
-			WDS <= true;
+			stack_data_in <= (others => '0');
+			stack_data_in(addr_len-1 downto 0) <= prog_cntr;
+			WRST <= true;
 		else
 			case opcode is
 			
@@ -584,29 +615,24 @@ begin
 				WDS <= true;
 			
 			when push_A =>
-				mcu_addr <= reg_SP;
-				mcu_data_out <= reg_A;
-				WDS <= true;
+				stack_data_in <= (others => '0');
+				stack_data_in(data_len-1 downto 0) <= reg_A;
+				WRST <= true;
 
 			when push_F =>
-				mcu_addr <= reg_SP;
-				mcu_data_out <= (others => '0');
-				mcu_data_out(7) <= to_std_logic(flag_I);
-				mcu_data_out(2) <= to_std_logic(flag_C);
-				mcu_data_out(0) <= to_std_logic(flag_Z);
-				WDS <= true;
+				stack_data_in <= (others => '0');
+				stack_data_in(2) <= to_std_logic(flag_I);
+				stack_data_in(1) <= to_std_logic(flag_C);
+				stack_data_in(0) <= to_std_logic(flag_Z);
+				WRST <= true;
 				
 			when call_n =>
-				mcu_addr <= reg_SP;
-				mcu_data_out <= (others => '0');
-				mcu_data_out(addr_len-1 downto 0) <= prog_cntr;
+				stack_data_in <= (others => '0');
+				stack_data_in(addr_len-1 downto 0) <= prog_cntr;
 				if (state = read_opcode) then
-					WDS <= true;
+					WRST <= true;
 				end if;
 
-			when pop_A | pop_F | ret_cll | ret_int =>
-				mcu_addr <= reg_SP;
-				
 			when others =>
 				null;
 			
