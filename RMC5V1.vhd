@@ -79,14 +79,14 @@ use ieee.numeric_std.all;
 
 entity RMC5_MCU is 
 	generic (
-		addr_len : integer := 7;
-		data_len : integer := 8;
-		start_pc : integer := 0;
-		interrupt_pc : integer := 3;
-		opcode_len : integer := 5;
-		operand_len : integer := addr_len;
-		instr_len : integer := opcode_len+operand_len;
-        sp_len : positive := 3
+		addr_len : positive := 7;
+		data_len : positive := 8;
+		opcode_len : positive := 5;
+		operand_len : positive := addr_len;
+		instr_len : positive := opcode_len+operand_len;
+        sp_len : positive := 3;
+		start_pc : natural := 0;
+		interrupt_pc : natural := 3
 	);
 	port (
 		prog_cntr : out std_logic_vector(addr_len-1 downto 0); -- Outgoing Program Counter
@@ -110,50 +110,65 @@ architecture behavior of RMC5_MCU is
 	subtype data_type is std_logic_vector(data_len-1 downto 0);
 
 -- Definition of operation codes. We have the constant name we will be using
--- in the VHDL definition of the MCU to refer to an operation, followed by 
+-- in the VHDL definition of the CPU to refer to an operation, followed by 
 -- the hexadecimal byte value by which this operation will be invoked as a 
 -- program is being executed, and the instruction pneumonic that shows what
--- the instruction does, and how it is to be written in the RMC5 assembly 
--- language. We use "(n)" for the contents of process memory address "n",
--- "jp nz" for jump if not zero, "ld" for "load", and so on. Our syntax for 
--- assembler code follows that of the venerable Z80 microprocessor.
+-- the instruction does, and how it is to be written in the OSR8 assembly 
+-- language. We use "n" for a process memory single-location constant. We
+-- use "nn" for a memory address constant. We use either "(nn)" for the
+-- contents of location nn in process memory. In our constant names, we do
+-- not write "(nn)" because parentheses are generally not allowed in the
+-- contant naming strings, so we write "m" instead. We write "(IX)" for 
+-- the contents of location IX in process memory. We write "jp nz" for jump 
+-- if not zero, "ld A,(nn)" for "load register A with the contents of process
+-- memory address nn", and so on. Our syntax for assembler code follows that
+-- of the venerable Z80 microprocessors.
 
-	-- Program flow: 00-07
-	constant nop      : opcode_type := "00000"; -- 00 nop
-	constant jp_n     : opcode_type := "00001"; -- 01 jp n
-	constant jp_nz_n  : opcode_type := "00010"; -- 02 jp nz,n
-	constant jp_z_n   : opcode_type := "00011"; -- 03 jp z,n
-	constant jp_nc_n  : opcode_type := "00100"; -- 04 jp nc,n
-	constant jp_c_n   : opcode_type := "00101"; -- 05 jp c,n
-	constant call_n   : opcode_type := "00110"; -- 06 call n
-	constant ret_cll  : opcode_type := "00111"; -- 07 ret
+-- Program control
+	constant nop       : opcode_type := "00000"; -- 00 nop
+	constant jp_nn     : opcode_type := "00001"; -- 01 jp nn
+	constant jp_nz_nn  : opcode_type := "00010"; -- 02 jp nz,nn
+	constant jp_z_nn   : opcode_type := "00011"; -- 03 jp z,nn
+	constant jp_nc_nn  : opcode_type := "00100"; -- 04 jp nc,nn
+	constant jp_c_nn   : opcode_type := "00101"; -- 05 jp c,nn
+	constant call_nn   : opcode_type := "00110"; -- 06 call nn
+	constant ret_cll   : opcode_type := "00111"; -- 07 ret
 
-	-- Stack, interrupt return, and memory transfer: 08-0E
-	constant ret_int  : opcode_type := "01000"; -- 08 rti
-	constant push_A   : opcode_type := "01001"; -- 09 push A
-	constant pop_A    : opcode_type := "01010"; -- 0A pop A
-	constant push_F   : opcode_type := "01011"; -- 0B push F
-	constant pop_F    : opcode_type := "01100"; -- 0C pop F
-	constant ld_m_A   : opcode_type := "01101"; -- 0D ld (n),A
-	constant ld_A_m   : opcode_type := "01110"; -- 0E ld A,(n)
+-- Stack and interrupt control
+	constant ret_int   : opcode_type := "01000"; -- 08 rti
+	constant push_A    : opcode_type := "01001"; -- 09 push A
+	constant pop_A     : opcode_type := "01010"; -- 0A pop A
+	constant push_F    : opcode_type := "01011"; -- 0B push F
+	constant pop_F     : opcode_type := "01100"; -- 0C pop F
 
-	-- Arithmetic: 10-13
-	constant add_A_m  : opcode_type := "10000"; -- 10 add A,(n)
-	constant adc_A_m  : opcode_type := "10001"; -- 11 adc A,(n)
-	constant sub_A_m  : opcode_type := "10010"; -- 12 sub A,(n)
-	constant sbc_A_m  : opcode_type := "10011"; -- 13 sbc A,(n)
+-- Direct and indexed memory access
+	constant ld_m_A    : opcode_type := "01101"; -- 0D ld (nn),A
+	constant ld_A_m    : opcode_type := "01110"; -- 0E ld A,(nn)
+	constant ld_IX_A   : opcode_type := "01111"; -- 0F ld (IX),A
 
-	-- Logic: 14-16
-	constant and_A_m  : opcode_type := "10100"; -- 14 and A,(n)
-	constant or_A_m   : opcode_type := "10101"; -- 15 or A,(n)
-	constant xor_A_m  : opcode_type := "10110"; -- 16 xor A,(n)
+-- Arithmetic
+	constant add_A_m   : opcode_type := "10000"; -- 10 add A,(nn)
+	constant adc_A_m   : opcode_type := "10001"; -- 11 adc A,(nn)
+	constant sub_A_m   : opcode_type := "10010"; -- 12 sub A,(nn)
+	constant sbc_A_m   : opcode_type := "10011"; -- 13 sbc A,(nn)
 
-	-- Rotations and flag control: 18-1C
-	constant rl_A     : opcode_type := "11000"; -- 18 rl A
-	constant rr_A     : opcode_type := "11001"; -- 19 rr A
-	constant clr_aflg : opcode_type := "11010"; -- 1A clrf
-	constant clr_iflg : opcode_type := "11011"; -- 1B clri
-	constant set_iflg : opcode_type := "11100"; -- 1C seti
+-- Logical
+	constant and_A_m   : opcode_type := "10100"; -- 14 and A,(nn)
+	constant or_A_m    : opcode_type := "10101"; -- 15 or A,(nn)
+	constant xor_A_m   : opcode_type := "10110"; -- 16 xor A,(nn)
+
+-- Indexed addressing
+	constant ld_A_IX   : opcode_type := "10111"; -- 17 ld A,(IX)
+	constant ld_IX_nn  : opcode_type := "11000"; -- 18 ld IX,nn
+	constant inc_IX    : opcode_type := "11001"; -- 19 inc IX
+	constant dec_IX    : opcode_type := "11010"; -- 1A dec IX
+
+-- Rotates and flags
+	constant rl_A      : opcode_type := "11011"; -- 1B rl A
+	constant rr_A      : opcode_type := "11100"; -- 1C rr A
+	constant clr_aflg  : opcode_type := "11101"; -- 1D clrf
+	constant clr_iflg  : opcode_type := "11110"; -- 1E clri
+	constant set_iflg  : opcode_type := "11111"; -- 1F seti
 	
 -- Attributes to guide the compiler.
 	attribute syn_keep : boolean;
@@ -206,11 +221,16 @@ architecture behavior of RMC5_MCU is
 	signal opcode : opcode_type;
 	signal operand : operand_type;
 
--- MCU Registers. The Accumulator, or Register A, in which we get the result 
--- of eight-bit arithmetic operations, logical operations, and shifts and 
--- rotations. When such an operation requires a second operand, we can use 
--- either Register B or a one-byte constant.
+-- The Accumulator, or Register A, in which we get the result of eight-bit 
+-- arithmetic operations, logical operations, and shifts and rotations. 
+-- When such an operation requires a second operand, our instruction will
+-- read the second operand from process memory.
 	signal reg_A : data_type;
+
+-- The Index Register, or IX, allows us to start at a known address in
+-- process memory and either advance or retreat from that address, reading
+-- or writing bytes.
+	signal reg_IX : operand_type;
 
 -- The flags are bits in the Flag Register, but we work with them as separate
 -- boolean signals so as to simplify our code. We have the Zero flag, Carry
@@ -358,7 +378,7 @@ begin
 	MCU : process (CK, RESET) is
 	variable next_A : data_type;
 	variable next_flag_Z, next_flag_C, next_flag_I : boolean;
-	variable next_pc : operand_type;
+	variable next_PC, next_IX : operand_type;
 	variable next_SP : std_logic_vector(sp_len-1 downto 0);
 	variable next_RISRV : boolean;
 	variable next_state : integer range 0 to 3;
@@ -371,6 +391,7 @@ begin
 			prog_cntr <= std_logic_vector(to_unsigned(start_pc,addr_len)); 
 			reg_SP <= (others => '0'); 
 			reg_A <= (others => '0');
+			reg_IX <= (others => '0');
 			flag_Z <= false;
 			flag_C <= false;
 			flag_I <= false;
@@ -382,9 +403,10 @@ begin
 			-- Define default next values. We end up stating explicitly what
 			-- the next state and next program counter will be.
 			next_state := read_opcode;
-			next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+			next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 			next_A := reg_A;
 			next_SP := reg_SP;
+			next_IX := reg_IX;
 			next_flag_C := flag_C;
 			next_flag_Z := flag_Z;
 			next_flag_I := flag_I;
@@ -406,7 +428,7 @@ begin
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					next_flag_I := true;
 					next_state := read_opcode;
-					next_pc := std_logic_vector(to_unsigned(interrupt_pc,addr_len));
+					next_PC := std_logic_vector(to_unsigned(interrupt_pc,addr_len));
 					next_RISRV := true;
 					
 				-- This is not an interrupt, so we are going to decode the 
@@ -417,40 +439,53 @@ begin
 					-- The no-operation instruction. Clock Cycles = 1.
 					when nop => 
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 						
 					-- Return from interrupt, we start by decremending the stack pointer 
 					-- and freezing the program counter. Clock Cycles = 2.
 					when ret_int =>
 						next_SP := std_logic_vector(unsigned(reg_SP)-1);
 						next_state := read_stack;
-						next_pc := prog_cntr;
+						next_PC := prog_cntr;
 				
 					-- Indirect eight-bit read operations using operand as address. Clock 
 					-- Cycles = 1.
 					when ld_A_m =>
 						next_A := mcu_data_in;
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
+						
+					-- Indirect eight-bit write operations using IX as address. Clock 
+					-- Cycles = 1.
+					when ld_IX_A =>
+						next_state := read_opcode;
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
+
+					-- Indirect eight-bit read operations using IX as address. Clock 
+					-- Cycles = 1.
+					when ld_A_IX =>
+						next_A := mcu_data_in;
+						next_state := read_opcode;
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 						
 					-- Indirect eight-bit write operations using operand as address. Clock 
 					-- Cycles = 1.
 					when ld_m_A =>
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Push operations for A and F onto the eight-bit wide stack. Clock
 					-- Cycles = 1.
 					when push_A | push_F => 
 						next_SP := std_logic_vector(unsigned(reg_SP)+1);
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 					
 					-- Pop instructions for eight-bit registers. Clock Cycles = 2.
 					when pop_A | pop_F =>
 						next_SP := std_logic_vector(unsigned(reg_SP)-1);
 						next_state := read_stack;	
-						next_pc := prog_cntr;
+						next_PC := prog_cntr;
 						
 					-- Add and subtract. Set Z and C flags. Clock Cycles = 1. 
 					when add_A_m | sub_A_m | adc_A_m | sbc_A_m =>
@@ -458,42 +493,42 @@ begin
 						next_flag_Z := (unsigned(alu_out) = 0);
 						next_flag_C := alu_cout;
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Eight-bit logical AND. Sets the Z flag only. Clock Cycles = 1.
 					when and_A_m  => 
 						next_A := alu_out;
 						next_flag_Z := (unsigned(alu_out) = 0);
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Eight-bit logical OR. Sets the Z flag only. Clock Cycles = 1.
 					when or_A_m  => 
 						next_A := alu_out;
 						next_flag_Z := (unsigned(alu_out) = 0);
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Eight-bit logical XOR. Sets the Z flag only. Clock Cycles = 1.
 					when xor_A_m  => 
 						next_A := alu_out;
 						next_flag_Z := (unsigned(alu_out) = 0);
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Rotate left. Set C flag. Clock Cycles = 1.
 					when rl_A =>
 						next_A := alu_out;
 						next_flag_C := alu_cout;
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 						
 					-- Rotate right. Set C flag. Clock Cycles = 1.
 					when rr_A =>
 						next_A := alu_out;
 						next_flag_C := alu_cout;
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 						
 					-- Clear arithmetic flags: a single instruction clears the zero (Z), 
 					-- and carry (C) flags, but not the interrupt (I) flag;
@@ -501,27 +536,27 @@ begin
 						next_flag_Z := false;
 						next_flag_C := false;
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Clear interrupt flag, so as to enable interrupts.
 					when clr_iflg =>
 						next_flag_I := false;
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 
 					-- Set interrupt flag, so as to disable interrupts.
 					when set_iflg =>
 						next_flag_I := true;
 						next_state := read_opcode;
-						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 						
 					-- Call a subroutine. We push the program counter onto the stack and
 					-- jump to the instruction memory location given by the operand. Clock 
 					-- Cycles = 1.
-					when call_n =>
+					when call_nn =>
 						next_SP := std_logic_vector(unsigned(reg_SP)+1);
 						next_state := read_opcode;
-						next_pc := operand;
+						next_PC := operand;
 
 					-- Return from subroutine, we start by decremending the stack
 					-- pointer and freezing the program counter. After that we 
@@ -530,23 +565,39 @@ begin
 					when ret_cll =>
 						next_SP := std_logic_vector(unsigned(reg_SP)-1);
 						next_state := read_stack;
-						next_pc := prog_cntr;
+						next_PC := prog_cntr;
 
-					-- Decide if we should jump to the address specified by the operands. If
-					-- so, we will jump immediately by loading the program counter with a new 
-					-- value. Clock Cycles = 1.
-					when jp_n | jp_z_n | jp_nz_n | jp_c_n | jp_nc_n=>
-						if (opcode = jp_n) or 
-							((opcode = jp_z_n) and flag_Z) or
-							((opcode = jp_nz_n) and (not flag_Z)) or
-							((opcode = jp_c_n) and flag_C) or
-							((opcode = jp_nc_n) and (not flag_C)) then
-							next_pc := operand;
+					-- Decide if we should jump to the address specified by the operand. 
+					-- If so, we will jump immediately by loading the program counter with 
+					-- a new value. Clock Cycles = 1.
+					when jp_nn | jp_z_nn | jp_nz_nn | jp_c_nn | jp_nc_nn=>
+						if (opcode = jp_nn) or 
+							((opcode = jp_z_nn) and flag_Z) or
+							((opcode = jp_nz_nn) and (not flag_Z)) or
+							((opcode = jp_c_nn) and flag_C) or
+							((opcode = jp_nc_nn) and (not flag_C)) then
+							next_PC := operand;
 						else 
-							next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+							next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 						end if;
 						next_state := read_opcode;
+					
+					-- Load the index register, IX, with the operand. Clock Cycles = 1.
+					when ld_IX_nn =>
+						next_IX := operand;
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
+						next_state := read_opcode;
 						
+					-- Increment the index register. Clock Cycles = 1;
+						next_IX := std_logic_vector(unsigned(operand)+1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
+						next_state := read_opcode;
+
+					-- Decrement the index register. Clock Cycles = 1;
+						next_IX := std_logic_vector(unsigned(operand)-1);
+						next_PC := std_logic_vector(unsigned(prog_cntr)+1);
+						next_state := read_opcode;
+
 					-- Let the defaults stand;
 					when others => null;					
 						
@@ -569,18 +620,18 @@ begin
 							next_flag_Z := (stack_data_out(0) = '1');
 						when others => null;
 					end case;
-					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+					next_PC := std_logic_vector(unsigned(prog_cntr)+1);
 					next_state := read_opcode;
 					
 				-- Read the program counter from the stack. After this, we are going
 				-- to increment the counter.
 				when ret_cll =>
-					next_pc := stack_data_out(addr_len-1 downto 0);
+					next_PC := stack_data_out(addr_len-1 downto 0);
 					next_state := incr_pc;	
 					
 				-- Read the program counter from the stack and continue execution.
 				when ret_int =>
-					next_pc := stack_data_out(addr_len-1 downto 0);
+					next_PC := stack_data_out(addr_len-1 downto 0);
 					next_flag_I := false;
 					next_RISRV := false;
 					next_state := read_opcode;
@@ -596,16 +647,17 @@ begin
 			-- so that it points to the next instruction after the call or software interrupt.
 			elsif (state = incr_pc) then
 				next_state := read_opcode;
-				next_pc := std_logic_vector(unsigned(prog_cntr)+1);	
+				next_PC := std_logic_vector(unsigned(prog_cntr)+1);	
 
 			end if;
 									
 			-- Assert the new state, program counter, and register values for the next clock 
 			-- cycle.
-			prog_cntr <= next_pc; 
+			prog_cntr <= next_PC; 
 			state <= next_state;					
 			reg_A <= next_A;
 			reg_SP <= next_SP;
+			reg_IX <= next_IX;
 			flag_C <= next_flag_C;
 			flag_Z <= next_flag_Z;
 			flag_I <= next_flag_I;
@@ -631,6 +683,13 @@ begin
 			when ld_m_A =>
 				WDS <= true;
 			
+			when ld_IX_A =>
+				WDS <= true;
+				mcu_addr <= reg_IX;
+				
+			when ld_A_IX =>
+				mcu_addr <= reg_IX;
+			
 			when push_A =>
 				stack_data_in(data_len-1 downto 0) <= reg_A;
 				if (state = read_opcode) then
@@ -645,7 +704,7 @@ begin
 					WRST <= true;
 				end if;
 				
-			when call_n =>
+			when call_nn =>
 				stack_data_in(addr_len-1 downto 0) <= prog_cntr;
 				if (state = read_opcode) then
 					WRST <= true;
