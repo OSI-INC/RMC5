@@ -17,18 +17,6 @@
 -- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, 
 -- USA.
 
--- V1.1, [29-OCT-26] Combinatorial instruction memory interface,
--- combinatorial read interface with external process memory. The 
--- Write Data Strobe (WDS) signal marks when the data provided -- by the microcontroller should be written to the process memory
--- location specified by the mcu address. The WDS signal will be
--- asserted some combinatorial delay after the rising edge of 
--- CK on an instruction that writes to process memory. It will
--- persist until after the next CK rising edge.
-
-library ieee;  
-use ieee.std_logic_1164.all;
-use ieee.numeric_std.all;
-
 -- The microcontroller requires seperate instruction and process memories. 
 -- Both memories have maximum size set by 2**addr_len. The instruction
 -- memory locations each contain a five-bit opcode in the top five bits
@@ -77,16 +65,30 @@ use ieee.numeric_std.all;
 -- the stack in the locations zero and up, but we can set the stack pointer to
 -- some other value with an instruction. Interrupts execute from interrupt_pc.
 
+-- V1.1, [29-OCT-26] Combinatorial instruction memory interface,
+-- combinatorial read interface with external process memory. The 
+-- Write Data Strobe (WDS) signal marks when the data provided -- by the microcontroller should be written to the process memory
+-- location specified by the mcu address. The WDS signal will be
+-- asserted some combinatorial delay after the rising edge of 
+-- CK on an instruction that writes to process memory. It will
+-- persist until after the next CK rising edge.
+
+library ieee;  
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+
+
 entity RMC5_MCU is 
 	generic (
-		addr_len : positive := 7;
-		data_len : positive := 8;
-		opcode_len : positive := 5;
+		addr_len : positive := 7; -- Can be 5 to 16 for 32 Byte to 64 KByte
+		data_len : positive := 8; -- Must be 8 for eight-bit data
+		opcode_len : positive := 5; -- Must be 5 for 32 opcodes
 		operand_len : positive := addr_len;
 		instr_len : positive := opcode_len+operand_len;
-        sp_len : positive := 3;
-		start_pc : natural := 0;
-		interrupt_pc : natural := 3
+        sp_len : positive := 3; -- Can be 1 to 16 for 2 Byte to 64 KByte
+		start_pc : natural := 0; -- A location in instruction memory
+		interrupt_pc : natural := 3 -- A location in instruction memory
 	);
 	port (
 		prog_cntr : out std_logic_vector(addr_len-1 downto 0); -- Outgoing Program Counter
@@ -282,96 +284,6 @@ begin
 -- of the instruction that is currently output from the instruction memory.
 	opcode <= prog_data(instr_len-1 downto instr_len-opcode_len);
 	operand <= prog_data(addr_len-1 downto 0);
-
--- The Arithmetic Logic Unit provides an eight-bit adder-subtractor with 
--- carry in and carry out, as well as logical operations AND, OR, and XOR.
-	ALU : process (all) is
-	variable result : unsigned(data_len downto 0);
-	variable inx, iny : unsigned(data_len-1 downto 0); 
-	begin 
-		inx := unsigned(alu_in_x);
-		iny := unsigned(alu_in_y);
-		result := ('0' & inx) + ('0' & iny);
-		
-		case alu_ctrl is
-		
-		-- Add X and Y with Carry
-		when alu_cmd_add =>
-			if alu_cin then 
-				result := ('0' & inx) + ('0' & iny) + 1;
-			else 
-				result := ('0' & inx) + ('0' & iny); 
-			end if;
-			
-		-- Subtract Y from X with Borrow
-		when alu_cmd_sub =>
-			if alu_cin then 
-				result := ('0' & inx) - ('0' & iny) - 1;
-			else 
-				result := ('0' & inx) - ('0' & iny); 
-			end if;
-			
-		-- Bit-Wise Exclusive OR of A and B
-		when alu_cmd_xor =>
-			result := '0' & (inx xor iny);
-			
-		-- Bit-Wise OR of A and B
-		when alu_cmd_or =>
-			result := '0' & (inx or iny);
-					
-		-- Bit-Wise Logical AND of X and Y
-		when alu_cmd_and =>
-			result := '0' & (inx and iny);
-					
-		-- Rotate Left of X.
-		when alu_cmd_rl  => 
-			result(data_len downto 1) := inx(data_len-1 downto 0);
-			result(0) := to_std_logic(alu_cin);	
-			
-		 -- Rotate Left Circuiar of X
-		when alu_cmd_rlc => 
-			result(data_len-1 downto 1) := inx(data_len-2 downto 0);
-			result(0) := inx(data_len-1);	
-			result(data_len) := inx(data_len-1);
-			
-		-- Rotate Right of X
-		when alu_cmd_rr  =>
-			result(data_len-1) := to_std_logic(alu_cin);
-			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
-			result(data_len) := inx(0);		
-			
-		-- Rotate Right Circular of X
-		when alu_cmd_rrc =>  
-			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
-			result(data_len-1) := inx(0);		
-			result(data_len) := inx(0);		
-			
-		-- Shift Left Arithmetic of X
-		when alu_cmd_sla =>  
-			result(data_len downto 1) := inx(data_len-1 downto 0);
-			result(0) :='0';	
-			
-		-- Shift Right Arithmetic of X
-		when alu_cmd_sra =>  
-			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
-			result(data_len-1) := inx(data_len-1);		
-			result(data_len) := inx(0);		
-			
-		-- Shift Right Logical of X
-		when alu_cmd_srl => 
-			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
-			result(data_len-1) := '0';		
-			result(data_len) := inx(0);		
-
-		-- Let the default values stand.
-		when others =>
-			null;
-			
-		end case;
-		
-		alu_out <= std_logic_vector(result(data_len-1 downto 0));
-		alu_cout <= result(data_len) = '1';
-	end process;
 
 -- The Central Processing Unit reads and writes from instruction, process, and 
 -- stack memory.
@@ -760,7 +672,97 @@ begin
 		
 		end case;
 end process;
-	
+
+-- The Arithmetic Logic Unit provides an eight-bit adder-subtractor with 
+-- carry in and carry out, as well as logical operations AND, OR, and XOR.
+	ALU : process (all) is
+	variable result : unsigned(data_len downto 0);
+	variable inx, iny : unsigned(data_len-1 downto 0); 
+	begin 
+		inx := unsigned(alu_in_x);
+		iny := unsigned(alu_in_y);
+		result := ('0' & inx) + ('0' & iny);
+		
+		case alu_ctrl is
+		
+		-- Add X and Y with Carry
+		when alu_cmd_add =>
+			if alu_cin then 
+				result := ('0' & inx) + ('0' & iny) + 1;
+			else 
+				result := ('0' & inx) + ('0' & iny); 
+			end if;
+			
+		-- Subtract Y from X with Borrow
+		when alu_cmd_sub =>
+			if alu_cin then 
+				result := ('0' & inx) - ('0' & iny) - 1;
+			else 
+				result := ('0' & inx) - ('0' & iny); 
+			end if;
+			
+		-- Bit-Wise Exclusive OR of A and B
+		when alu_cmd_xor =>
+			result := '0' & (inx xor iny);
+			
+		-- Bit-Wise OR of A and B
+		when alu_cmd_or =>
+			result := '0' & (inx or iny);
+					
+		-- Bit-Wise Logical AND of X and Y
+		when alu_cmd_and =>
+			result := '0' & (inx and iny);
+					
+		-- Rotate Left of X.
+		when alu_cmd_rl  => 
+			result(data_len downto 1) := inx(data_len-1 downto 0);
+			result(0) := to_std_logic(alu_cin);	
+			
+		 -- Rotate Left Circuiar of X
+		when alu_cmd_rlc => 
+			result(data_len-1 downto 1) := inx(data_len-2 downto 0);
+			result(0) := inx(data_len-1);	
+			result(data_len) := inx(data_len-1);
+			
+		-- Rotate Right of X
+		when alu_cmd_rr  =>
+			result(data_len-1) := to_std_logic(alu_cin);
+			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
+			result(data_len) := inx(0);		
+			
+		-- Rotate Right Circular of X
+		when alu_cmd_rrc =>  
+			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
+			result(data_len-1) := inx(0);		
+			result(data_len) := inx(0);		
+			
+		-- Shift Left Arithmetic of X
+		when alu_cmd_sla =>  
+			result(data_len downto 1) := inx(data_len-1 downto 0);
+			result(0) :='0';	
+			
+		-- Shift Right Arithmetic of X
+		when alu_cmd_sra =>  
+			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
+			result(data_len-1) := inx(data_len-1);		
+			result(data_len) := inx(0);		
+			
+		-- Shift Right Logical of X
+		when alu_cmd_srl => 
+			result(data_len-2 downto 0) := inx(data_len-1 downto 1);
+			result(data_len-1) := '0';		
+			result(data_len) := inx(0);		
+
+		-- Let the default values stand.
+		when others =>
+			null;
+			
+		end case;
+		
+		alu_out <= std_logic_vector(result(data_len-1 downto 0));
+		alu_cout <= result(data_len) = '1';
+	end process;
+
 -- The ISRV Delay takes RISRV generated on the rising edge of CK
 -- and delays until the falling edge, so as to match signals written
 -- to registers by the MCU. The resulting ISRV signal can be used
