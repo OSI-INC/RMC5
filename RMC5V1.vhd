@@ -17,41 +17,45 @@
 -- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, 
 -- USA.
 
--- The microcontroller requires seperate instruction and process memories. 
--- Both memories have maximum size set by 2**addr_len. The instruction
--- memory locations each contain a five-bit opcode in the top five bits
--- and addr_len bits for the operand. The operand can be an address in 
--- either the instruction or process memory, or it can be ignored. It is
--- never a constant value: we obtain constants by pre-loading them into
--- process memory locations and reading them using the memory access 
--- instructions. The process memory locations always contain eight-bit
--- values.
+-- The RMC5 requires seperate instruction and process memories. Both 
+-- memories have maximum size set by addr_len. The instruction memory 
+-- locations contain five-bit opcodes in the top bits and adr_len 
+-- operands in the bottom bits. The operand can be an address in 
+-- instruction memory, an address in process memory, or it can be 
+-- ignored. The operand is never a constant data value: we obtain 
+-- constants by reading them from process memory locations. Process 
+-- memory locations always eight bits wide.
 
--- The stack is internal to this entity, its length being set by the 
--- sp_len genric constant. The width of the stack entries is the greater
--- of the data width, which is always eight, and the address length, 
--- which can be any value. The stack provides asynchronous reads and
--- synchronous writes.
+-- The RMC5 clock, CK, can be any speed up to a maximum dictated by
+-- the logic chip sample, hold, and propagation times. 
 
--- The instruction memory and process memory are external to this entity.
--- The instruction memory should be pre-loaded read-only with no clock, so
--- that it is implemented as combinatorial logic. If the program memory is
--- implemented as distributed RAM, the compiler will see what instructions
--- are going to be executed and will be able to eliminate the logic that 
--- implements unused instructions. If the program memory is implemented in
--- embedded RAM blocks, we will have more space for code, but the compiler
--- will not be able to perform its optimization. The logic for all
--- instructions will remain in place. The program counter connects 
--- directly to the ROM and the instruction appears in response with no clock 
--- delays. 
+-- The program stack is internal to this entity, implemented in
+-- distributed RAM. The length of the stack is set by the sp_len generic
+-- constant. The width of each stack entry is the greater of the data 
+-- width, which is always eight, and the address length, which can be 
+-- five to sixteen. The stack provides asynchronous reads and synchronous 
+-- writes.
 
--- The process memory should be combinatorial for read cycles and perform 
--- a write to the mcu address location when it sees WDS asserted on the 
--- rising edge of its write clock. The WDS signal also tells the external
--- logic not drive a shared data bus, if one exist. The write can take place
--- wither on the falling edge of CK, half a CK period after the instruction
--- processing begins, or on the rising edge of CK, a whole CK period after 
--- processing begins.
+-- The instruction memory and process memory are external to the RMC5.-- The instruction memory should be pre-loaded with the program. It can
+-- asynchronous or synchronous memory, but if synchronous, it must be 
+-- read on the falling edge of CK and written on the rising edge of CK. 
+-- Writing to instruction memory implies that a dual-port memory to which 
+-- we can write one location even as we are reading from another location.
+-- We avoid conflict within the dual-port memory by writing and reading
+-- on different edges of CK. We can use Embedded Block RAM (EBR) for 
+-- instruction memory, configured as ROM or DPRAM. All EBR memory is 
+-- synchronous. We can also use asynchronous, distributed ROM.
+
+-- The process memory must be asynchronous on read cycles. If the 
+-- memory reads were to by synchronous, it would be impossible for the
+-- processor to complete a read instruction in one clock cycle. The-- process memory can be synchronous on write cycles, and we can write 
+-- either on the rising or falling edge of CK. Alternatively, the 
+-- process memory can use WDS as its write data strobe.
+
+-- The RMC5 instructions do not carry data constants. Data constants 
+-- must be provided by locations in process memory. Either the process
+-- memory must contain eight-bit ROM containing the constants, or the
+-- process RAM must be initialized with constants in certain locations.
 
 -- The IRQ input is the interrupt request line from external logic. The memory 
 -- management unit (MMU) must provide a way for the MCU to clear the IRQ signal 
@@ -77,16 +81,14 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-
-
 entity RMC5_MCU is 
 	generic (
-		addr_len : positive := 7; -- Can be 5 to 16 for 32 Byte to 64 KByte
-		data_len : positive := 8; -- Must be 8 for eight-bit data
+		addr_len : positive := 7; -- Range 5-16 for 32-Byte to 64-KByte Memories
+		data_len : positive := 8; -- Must be 8 for 8-bit data
 		opcode_len : positive := 5; -- Must be 5 for 32 opcodes
-		operand_len : positive := addr_len;
-		instr_len : positive := opcode_len+operand_len;
-        sp_len : positive := 3; -- Can be 1 to 16 for 2 Byte to 64 KByte
+		operand_len : positive := addr_len; -- All operands are memory addresses
+		instr_len : positive := opcode_len+operand_len; -- Instruction memory width
+        sp_len : positive := 3; -- Can be 3 to 16 for 8 Byte to 64 KByte Stack
 		start_pc : natural := 0; -- A location in instruction memory
 		interrupt_pc : natural := 3 -- A location in instruction memory
 	);
@@ -593,10 +595,14 @@ begin
 			case opcode is
 			
 			when ld_m_A =>
-				WDS <= true;
+				if (state = read_opcode) then
+					WDS <= true;
+				end if;
 			
 			when ld_IX_A =>
-				WDS <= true;
+				if (state = read_opcode) then
+					WDS <= true;
+				end if;
 				mcu_addr <= reg_IX;
 				
 			when ld_A_IX =>

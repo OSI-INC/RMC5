@@ -9,10 +9,15 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity main is 
+	generic (
+		addr_len : positive := 9; -- Can be five to sixteen
+		data_len : positive := 8; -- Must be eight
+		instr_len : positive := addr_len + 5
+	);
 	port (
-		mcu_data : inout std_logic_vector(7 downto 0);
-		mcu_addr : out std_logic_vector(6 downto 0);
-		MCUWDS : inout std_logic;
+		mcu_data : inout std_logic_vector(data_len-1 downto 0);
+		mcu_addr : out std_logic_vector(addr_len-1 downto 0);
+		WDS : inout std_logic;
 		IRSV : out std_logic;
 		CK, IRQ, RESET : in std_logic
 	);
@@ -21,10 +26,10 @@ entity main is
 architecture behavior of main is
 
 -- Microcontroller data in and out.
-	signal mcu_data_in, mcu_data_out : std_logic_vector(7 downto 0);
+	signal mcu_data_in, mcu_data_out : std_logic_vector(data_len-1 downto 0);
 	signal wds_boolean, irsv_boolean : boolean;
-	signal prog_cntr : std_logic_vector(6 downto 0);
-	signal prog_data : std_logic_vector(11 downto 0);
+	signal prog_cntr : std_logic_vector(addr_len-1 downto 0);
+	signal prog_data : std_logic_vector(instr_len-1 downto 0);
 
 -- Attributes that request signals to be retained instead of distributed.
 	attribute syn_keep : boolean;
@@ -37,19 +42,26 @@ architecture behavior of main is
 begin
 
 -- The Bus Controller decides when to drive the data lines.
-	mcu_data <= mcu_data_out when MCUWDS else (others => 'Z');
+	mcu_data <= mcu_data_out when WDS else (others => 'Z');
 	mcu_data_in <= mcu_data;
-	MCUWDS <= to_std_logic(wds_boolean);
+	WDS <= to_std_logic(wds_boolean);
 	IRSV <= to_std_logic(irsv_boolean);	
 
-	PROG : entity ROM
+-- The instruction memory
+	Instruction_Memory : entity ROM
 		port map (
-			Address => prog_cntr(5 downto 0),
+			Address => prog_cntr,
+			OutClock => not CK,
+			OutClockEn => '1',
+			Reset => '0',
 			Q => prog_data
 		);
 		
 -- The RMC5, configured for this application by its generic map.
-	MCU : entity RMC5_MCU
+	Microcontroller : entity RMC5_MCU
+		generic map (
+			addr_len => addr_len
+		)
 		port map (
 			prog_cntr => prog_cntr,
 			prog_data => prog_data,

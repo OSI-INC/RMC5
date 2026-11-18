@@ -1,9 +1,9 @@
 [Device]
 Family=machxo2
-PartType=LCMXO2-256ZE
-PartName=LCMXO2-256ZE-1TG100C
+PartType=LCMXO2-1200ZE
+PartName=LCMXO2-1200ZE-1SG32C
 SpeedGrade=1
-Package=TQFP100
+Package=QFN32
 OperatingCondition=COM
 Status=S
 
@@ -11,13 +11,13 @@ Status=S
 VendorName=Lattice Semiconductor Corporation
 CoreType=LPM
 CoreStatus=Demo
-CoreName=Distributed_ROM
-CoreRevision=2.8
+CoreName=ROM
+CoreRevision=5.4
 ModuleName=ROM
 SourceFormat=VHDL
 ParameterFileVersion=1.0
-Date=10/31/2026
-Time=22:20:57
+Date=11/05/2026
+Time=21:14:01
 
 [Parameters]
 Verilog=0
@@ -27,14 +27,26 @@ Destination=Synplicity
 Expression=BusA(0 to 7)
 Order=Big Endian [MSB:LSB]
 IO=0
-Addresses=64
-Data=12
-LUT=0
+Address=512
+Data=14
+enByte=0
+ByteSize=9
+OutputEn=0
+ClockEn=0
+Optimization=Area
+Reset=Sync
+Reset1=Sync
+Init=0
 MemFile=c:/kevan/rmc5/demo/rom.mem
 MemFormat=bin
+EnECC=0
+Pipeline=0
+Write=Normal
+init_data=0
+no_init=0
 
 [FilesGenerated]
 c:/kevan/rmc5/demo/rom.mem=mem
 
 [Command]
-cmd_line= -w -n ROM -lang vhdl -synth synplify -bus_exp 7 -bb -arch xo2c00 -dram -type romblk -addr_width 6 -num_words 64 -data_width 12 -outdata UNREGISTERED -memfile c:/kevan/rmc5/demo/rom.mem -memformat bin
+cmd_line= -w -n ROM -lang vhdl -synth synplify -bus_exp 7 -bb -arch xo2c00 -type romblk -device LCMXO2-1200ZE -addr_width 9 -data_width 14 -num_words 512 -cascade 11 -memfile "c:/kevan/rmc5/demo/rom.mem" -memformat bin

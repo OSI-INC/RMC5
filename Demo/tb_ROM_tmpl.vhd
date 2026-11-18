@@ -14,16 +14,21 @@ end entity tb;
 architecture test of tb is 
 
     component ROM
-        port (Address : in std_logic_vector(5 downto 0); 
-        Q : out std_logic_vector(11 downto 0)
+        port (Address : in std_logic_vector(8 downto 0); 
+        OutClock: in std_logic; OutClockEn: in std_logic; 
+        Reset: in std_logic; Q : out std_logic_vector(13 downto 0)
     );
     end component;
 
-    signal Address : std_logic_vector(5 downto 0) := (others => '0');
-    signal Q : std_logic_vector(11 downto 0);
+    signal Address : std_logic_vector(8 downto 0) := (others => '0');
+    signal OutClock: std_logic := '0';
+    signal OutClockEn: std_logic := '0';
+    signal Reset: std_logic := '0';
+    signal Q : std_logic_vector(13 downto 0);
 begin
     u1 : ROM
-        port map (Address => Address, Q => Q
+        port map (Address => Address, OutClock => OutClock, OutClockEn => OutClockEn, 
+            Reset => Reset, Q => Q
         );
 
     process
@@ -31,11 +36,32 @@ begin
     begin
       Address <= (others => '0') ;
       wait for 100 ns;
-      wait for 10 ns;
-      for i in 0 to 67 loop
-        wait for 10 ns;
-        Address <= Address + '1' ;
+      wait until Reset = '0';
+      for i in 0 to 515 loop
+        wait until OutClock'event and OutClock = '1';
+        Address <= Address + '1' after 1 ns;
       end loop;
+      wait;
+    end process;
+
+    OutClock <= not OutClock after 5.00 ns;
+
+    process
+
+    begin
+      OutClockEn <= '0' ;
+      wait for 100 ns;
+      wait until Reset = '0';
+      OutClockEn <= '1' ;
+      wait;
+    end process;
+
+    process
+
+    begin
+      Reset <= '1' ;
+      wait for 100 ns;
+      Reset <= '0' ;
       wait;
     end process;
 
